@@ -667,3 +667,49 @@ textarea.form-control { resize: vertical; min-height: 80px; line-height: 1.5; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Light Theme ─────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:          #f1f5f9;
+  --bg-surface:  #ffffff;
+  --bg-elevated: #f8fafc;
+  --bg-hover:    #e2e8f0;
+  --sidebar-bg:  #1e293b;
+
+  --accent:       #0284c7;
+  --accent-hover: #0369a1;
+  --accent-dim:   rgba(2, 132, 199, 0.1);
+  --accent-glow:  0 0 12px rgba(2, 132, 199, 0.2);
+
+  --text:       #1e293b;
+  --text-muted: #64748b;
+  --text-dim:   #94a3b8;
+
+  --border:        rgba(0, 0, 0, 0.1);
+  --border-accent: rgba(2, 132, 199, 0.3);
+
+  --shadow:    0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.16);
+}
+
+[data-theme="light"] .sidebar-brand h1 { text-shadow: none; }
+[data-theme="light"] body { -webkit-font-smoothing: auto; }
+[data-theme="light"] .data-table tbody tr:hover { background: #e2e8f0; }
+[data-theme="light"] .login-page,
+[data-theme="light"] #login-page { background: #f1f5f9; }
+[data-theme="light"] .login-card { background: #ffffff; }
+
+/* ── Theme Toggle Button ─────────────────────────────────────────────────── */
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 15px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.theme-toggle:hover { background: var(--accent-dim); color: var(--accent); }
