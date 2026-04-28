@@ -86,16 +86,16 @@ function buildShell() {
             <tr>
               <th class="checkbox-col"><input type="checkbox" id="select-all"></th>
               <th>Ticket #</th>
-              <th>Customer</th>
+              <th>Customer Name</th>
               <th>Phone</th>
-              <th>L3</th>
-              <th>Zone</th>
+              <th>Complaint Type</th>
               <th>Partner</th>
               <th>Queue</th>
               <th class="sortable" data-col="agingHours">Aging ↕</th>
               <th>Platform Status</th>
               <th>Assigned To</th>
-              <th>Last Updated</th>
+              <th>Assigned On</th>
+              <th>Reopen</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -256,7 +256,7 @@ function renderTable() {
     : "No tickets";
 
   if (!page.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="13">No tickets match the current filters.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="14">No tickets match the current filters.</td></tr>`;
     if (pagBtns) pagBtns.innerHTML = "";
     return;
   }
@@ -269,14 +269,14 @@ function renderTable() {
       <td>${kaptureLink(t.ticketNo)}</td>
       <td class="td-wrap" title="${t.customerName || ""}">${t.customerName || "—"}</td>
       <td class="td-phone">${t.phone || "—"}</td>
-      <td class="td-wrap" title="${t.dispL3 || ""}">${t.dispL3 || "—"}</td>
-      <td>${t.zone || "—"}</td>
+      <td class="td-wrap" title="${[t.dispL3, t.dispL4].filter(Boolean).join(" > ")}">${t.dispL3 || "—"}${t.dispL4 ? ` <span style="color:var(--text-muted)">›</span> ${t.dispL4}` : ""}</td>
       <td class="td-wrap" title="${t.mappedPartner || ""}">${t.mappedPartner || "—"}</td>
       <td>${t.currentQueue || "—"}</td>
       <td>${agingBadge(t.agingBucket, t.agingHours)}</td>
       <td>${statusBadge(t.platformStatus)}</td>
       <td class="td-wrap">${t.assignedToName || '<span class="text-muted">Unassigned</span>'}</td>
-      <td style="font-size:11px;color:var(--text-muted)">${formatDate(t.lastUpdateDate)}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${t.assignedDate ? formatDate(t.assignedDate) : "—"}</td>
+      <td>${t.reopenTag ? '<span class="badge badge-escalated">⚠ Reopen</span>' : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td class="td-actions">
         <button class="btn btn-xs btn-secondary view-btn" data-id="${t.ticketNo}">View</button>
         <button class="btn btn-xs btn-primary assign-btn" data-id="${t.ticketNo}">Assign</button>
