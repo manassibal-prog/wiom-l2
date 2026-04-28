@@ -1,7 +1,7 @@
 import { CONFIG } from '../config.js';
 import {
   subscribeToTickets, subscribeToUsers,
-  assignTicket, bulkAssignTickets
+  assignTicket, bulkAssignTickets, getRoster
 } from '../db.js';
 import {
   showToast, showLoading, hideLoading, showModal, closeModal,
@@ -72,6 +72,7 @@ function buildShell() {
         </label>
         <div class="filter-actions">
           <button class="btn btn-secondary btn-sm" id="fl-clear">Clear</button>
+          <button class="btn btn-primary btn-sm" id="auto-assign-btn">⚡ Auto-Assign</button>
         </div>
       </div>
       <div class="bulk-bar" id="bulk-bar">
@@ -125,6 +126,7 @@ function bindFilterEvents() {
   document.getElementById("fl-aging").addEventListener("change", e => { currentFilters.aging = e.target.value; applyFiltersAndRender(); });
   document.getElementById("fl-reopen").addEventListener("change", e => { currentFilters.reopenOnly = e.target.checked; applyFiltersAndRender(); });
   document.getElementById("fl-clear").addEventListener("click", clearFilters);
+  document.getElementById("auto-assign-btn").addEventListener("click", openAutoAssignModal);
 
   document.getElementById("select-all").addEventListener("change", e => {
     const ids = getPageTicketNos();
@@ -425,6 +427,95 @@ function openAssignModal(ticketNos) {
       showToast("Error: " + e.message, "error");
       const btn = document.getElementById("assign-confirm");
       if (btn) { btn.disabled = false; btn.textContent = "Assign"; }
+    }
+  };
+}
+
+// ─── Auto-Assign Modal ────────────────────────────────────────────────────────
+
+async function openAutoAssignModal() {
+  const unassigned = allTickets.filter(t => t.platformStatus === "New/Unassigned");
+  if (!unassigned.length) { showToast("No unassigned tickets to assign", "info"); return; }
+
+  showLoading("Checking today's roster…");
+  let roster;
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    roster = await getRoster(today);
+  } finally {
+    hideLoading();
+  }
+
+  const rosterEntries = roster?.advisors || {};
+
+  // Only advisors marked P or WFH today, sorted by least tickets held
+  const available = allUsers
+    .filter(u => u.role === "Advisor" && u.active && CONFIG.AVAILABLE_CODES.includes(rosterEntries[u.email]))
+    .sort((a, b) => {
+      const ha = allTickets.filter(t => t.assignedTo === a.email).length;
+      const hb = allTickets.filter(t => t.assignedTo === b.email).length;
+      return ha - hb;
+    });
+
+  if (!available.length) {
+    showModal(
+      "Auto-Assign",
+      `<p style="font-size:14px">No advisors are marked <strong>P</strong> or <strong>WFH</strong> in today's roster.<br><br>
+       Please update the Roster first, then try again.</p>`,
+      `<button class="btn btn-secondary" onclick="document.getElementById('modal-overlay').style.display='none'">OK</button>`
+    );
+    return;
+  }
+
+  const perAdvisor = Math.ceil(unassigned.length / available.length);
+  const body = `
+    <p style="font-size:14px;margin-bottom:14px">
+      <strong>${unassigned.length}</strong> unassigned tickets will be distributed across
+      <strong>${available.length}</strong> available advisors (~${perAdvisor} each), least-loaded first.
+    </p>
+    <div style="font-size:13px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      ${available.map((a, i) => {
+        const h = allTickets.filter(t => t.assignedTo === a.email).length;
+        const roster = rosterEntries[a.email];
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;${i % 2 === 0 ? "" : "background:var(--bg-elevated)"}">
+          <span>${a.name}</span>
+          <span style="display:flex;gap:8px;align-items:center">
+            <span class="badge badge-assigned">${roster}</span>
+            <span style="color:var(--text-muted);font-size:12px">${h} holding</span>
+          </span>
+        </div>`;
+      }).join("")}
+    </div>
+  `;
+
+  showModal(
+    "⚡ Auto-Assign Unassigned Tickets",
+    body,
+    `<button class="btn btn-secondary" id="aa-cancel">Cancel</button>
+     <button class="btn btn-primary" id="aa-confirm">Confirm & Assign</button>`,
+    true
+  );
+
+  document.getElementById("aa-cancel").onclick = closeModal;
+  document.getElementById("aa-confirm").onclick = async () => {
+    const btn = document.getElementById("aa-confirm");
+    btn.disabled = true;
+    btn.textContent = "Assigning…";
+    try {
+      // Round-robin across sorted advisors
+      const assignments = unassigned.map((t, i) => {
+        const adv = available[i % available.length];
+        return { ticketNo: t.ticketNo, advisorEmail: adv.email, advisorName: adv.name };
+      });
+      showLoading(`Assigning ${unassigned.length} tickets…`);
+      await bulkAssignTickets(assignments, currentActor);
+      hideLoading();
+      showToast(`${unassigned.length} tickets assigned to ${available.length} advisors`, "success");
+      closeModal();
+    } catch (e) {
+      hideLoading();
+      showToast("Error: " + e.message, "error");
+      if (btn) { btn.disabled = false; btn.textContent = "Confirm & Assign"; }
     }
   };
 }
