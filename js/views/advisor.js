@@ -70,15 +70,15 @@ function buildShell() {
           <thead>
             <tr>
               <th>Ticket #</th>
-              <th>Customer</th>
+              <th>Customer Name</th>
               <th>Phone</th>
-              <th>L3 / L4</th>
-              <th>Zone</th>
+              <th>Complaint Type</th>
               <th>Partner</th>
               <th>Aging</th>
               <th>Kapture Status</th>
               <th>Platform Status</th>
-              <th>Assigned</th>
+              <th>Assigned On</th>
+              <th>Reopen</th>
               <th>Remarks</th>
               <th>Actions</th>
             </tr>
@@ -222,7 +222,7 @@ function renderTable() {
     : "No tickets";
 
   if (!page.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="12">No tickets match the current filters.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="12">No tickets found.</td></tr>`;
     if (pagBtns) pagBtns.innerHTML = "";
     return;
   }
@@ -232,13 +232,13 @@ function renderTable() {
       <td>${kaptureLink(t.ticketNo)}</td>
       <td class="td-wrap" title="${t.customerName || ""}">${t.customerName || "—"}</td>
       <td class="td-phone">${t.phone || "—"}</td>
-      <td class="td-wrap" title="${t.dispL3 || ""} / ${t.dispL4 || ""}">${t.dispL3 || "—"}<br><span style="font-size:11px;color:var(--text-muted)">${t.dispL4 || ""}</span></td>
-      <td>${t.zone || "—"}</td>
+      <td class="td-wrap" title="${[t.dispL3, t.dispL4].filter(Boolean).join(" > ")}">${t.dispL3 || "—"}${t.dispL4 ? ` <span style="color:var(--text-muted)">›</span> ${t.dispL4}` : ""}</td>
       <td class="td-wrap">${t.mappedPartner || "—"}</td>
       <td>${agingBadge(t.agingBucket, t.agingHours)}</td>
       <td><span style="font-size:12px">${t.kaptureStatus || "—"}</span></td>
       <td>${statusBadge(t.platformStatus)}</td>
-      <td style="font-size:11px;color:var(--text-muted)">${formatDate(t.assignedDate)}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${t.assignedDate ? formatDate(t.assignedDate) : "—"}</td>
+      <td>${t.reopenTag ? '<span class="badge badge-escalated">⚠ Reopen</span>' : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td class="td-wrap" style="font-size:12px" title="${t.advisorRemarks || ""}">${t.advisorRemarks || '<span class="text-muted">—</span>'}</td>
       <td class="td-actions">
         <button class="btn btn-xs btn-primary view-btn" data-id="${t.ticketNo}">Update</button>
