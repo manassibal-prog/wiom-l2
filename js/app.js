@@ -36,7 +36,9 @@ onAuthReady((user, errorCode) => {
 // ─── App Boot ─────────────────────────────────────────────────────────────────
 
 function bootApp() {
+  initTheme();
   renderSidebar();
+  renderThemeToggle();
 
   // Start user subscription for admin panel
   unsubUsers = subscribeToUsers(users => {
@@ -47,6 +49,32 @@ function bootApp() {
   // Route to default view
   const defaultView = getDefaultView(currentUser.role);
   navigateTo(defaultView);
+}
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+function initTheme() {
+  const saved = localStorage.getItem("wiom-theme") || "dark";
+  document.documentElement.setAttribute("data-theme", saved);
+}
+
+function renderThemeToggle() {
+  const actions = document.getElementById("topbar-actions");
+  if (!actions) return;
+  const btn = document.createElement("button");
+  btn.id = "theme-toggle-btn";
+  btn.className = "theme-toggle";
+  btn.title = "Toggle light / dark theme";
+  const current = document.documentElement.getAttribute("data-theme") || "dark";
+  btn.textContent = current === "dark" ? "☀️" : "🌙";
+  btn.addEventListener("click", () => {
+    const now = document.documentElement.getAttribute("data-theme") || "dark";
+    const next = now === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("wiom-theme", next);
+    btn.textContent = next === "dark" ? "☀️" : "🌙";
+  });
+  actions.appendChild(btn);
 }
 
 function getDefaultView(role) {
