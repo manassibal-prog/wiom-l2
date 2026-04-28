@@ -273,12 +273,7 @@ export async function getRoster(date) {
 
 export async function updateRosterEntry(date, email, code) {
   const rosterRef = doc(db, "roster", date);
-  const snap = await getDoc(rosterRef);
-  if (snap.exists()) {
-    await updateDoc(rosterRef, { [`advisors.${email}`]: code });
-  } else {
-    await setDoc(rosterRef, { date, advisors: { [email]: code } });
-  }
+  await setDoc(rosterRef, { date, advisors: { [email]: code } }, { merge: true });
 }
 
 // ─── Ingestion Log ───────────────────────────────────────────────────────────
