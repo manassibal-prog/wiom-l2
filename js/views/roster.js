@@ -181,10 +181,16 @@ function renderRoster(readOnly) {
       sel.addEventListener("change", async e => {
         const { date, email } = e.target.dataset;
         const code = e.target.value;
+        // Optimistic update — prevent re-renders from reverting the select
+        if (!rosterData[date]) rosterData[date] = {};
+        rosterData[date][email] = code;
         try {
           await updateRosterEntry(date, email, code);
           showToast(`Roster updated`, "success", 1500);
         } catch (err) {
+          // Revert on failure
+          delete rosterData[date][email];
+          renderRoster(readOnly);
           showToast("Error: " + err.message, "error");
         }
       });
