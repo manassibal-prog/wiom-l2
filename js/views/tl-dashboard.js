@@ -30,7 +30,7 @@ export function mountTLDashboard(actor, container) {
   bindFilterEvents();
   bindBulkBar();
   unsubTickets = subscribeToTickets(tickets => {
-    allTickets = tickets;
+    allTickets = tickets.filter(t => t.dispL3 !== "Shifting Request");
     applyFiltersAndRender();
   });
   unsubUsers = subscribeToUsers(users => {
@@ -61,7 +61,6 @@ function buildShell() {
         <select class="filter-select" id="fl-advisor"><option value="all">All Advisors</option></select>
         <select class="filter-select" id="fl-category">
           <option value="all">All Categories</option>
-          ${CONFIG.CATEGORY_GROUPS.map(c => `<option value="${c}">${c}</option>`).join("")}
         </select>
         <select class="filter-select" id="fl-aging">
           <option value="all">All Aging</option>
@@ -171,6 +170,14 @@ function populateAdvisorFilter() {
     const cur = zoneSelect.value;
     zoneSelect.innerHTML = `<option value="all">All Zones</option>` +
       zones.map(z => `<option value="${z}" ${cur === z ? "selected" : ""}>${z}</option>`).join("");
+  }
+
+  const categories = [...new Set(allTickets.map(t => t.dispL3).filter(Boolean))].sort();
+  const categorySelect = document.getElementById("fl-category");
+  if (categorySelect) {
+    const cur = categorySelect.value;
+    categorySelect.innerHTML = `<option value="all">All Categories</option>` +
+      categories.map(c => `<option value="${c}" ${cur === c ? "selected" : ""}>${c}</option>`).join("");
   }
 }
 
@@ -448,8 +455,8 @@ async function openAutoAssignModal() {
 
   const rosterEntries = roster?.advisors || {};
 
-  // Only advisors marked P or WFH today, sorted by least tickets held
-  const available = allUsers
+  // All available advisors today (P or WFH), sorted by least loaded
+  const allAvailable = allUsers
     .filter(u => u.role === "Advisor" && u.active && CONFIG.AVAILABLE_CODES.includes(rosterEntries[u.email]))
     .sort((a, b) => {
       const ha = allTickets.filter(t => t.assignedTo === a.email).length;
@@ -457,60 +464,95 @@ async function openAutoAssignModal() {
       return ha - hb;
     });
 
-  if (!available.length) {
-    showModal(
-      "Auto-Assign",
-      `<p style="font-size:14px">No advisors are marked <strong>P</strong> or <strong>WFH</strong> in today's roster.<br><br>
-       Please update the Roster first, then try again.</p>`,
+  if (!allAvailable.length) {
+    showModal("Auto-Assign",
+      `<p style="font-size:14px">No advisors are marked <strong>P</strong> or <strong>WFH</strong> in today's roster.<br><br>Please update the Roster first, then try again.</p>`,
       `<button class="btn btn-secondary" onclick="document.getElementById('modal-overlay').style.display='none'">OK</button>`
     );
     return;
   }
 
-  const perAdvisor = Math.ceil(unassigned.length / available.length);
-  const body = `
-    <p style="font-size:14px;margin-bottom:14px">
-      <strong>${unassigned.length}</strong> unassigned tickets will be distributed across
-      <strong>${available.length}</strong> available advisors (~${perAdvisor} each), least-loaded first.
-    </p>
-    <div style="font-size:13px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
-      ${available.map((a, i) => {
-        const h = allTickets.filter(t => t.assignedTo === a.email).length;
-        const roster = rosterEntries[a.email];
-        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;${i % 2 === 0 ? "" : "background:var(--bg-elevated)"}">
-          <span>${a.name}</span>
-          <span style="display:flex;gap:8px;align-items:center">
-            <span class="badge badge-assigned">${roster}</span>
-            <span style="color:var(--text-muted);font-size:12px">${h} holding</span>
-          </span>
-        </div>`;
-      }).join("")}
-    </div>
-  `;
+  // ── Specialty routing ─────────────────────────────────────────────────────
+  const KRITI   = "kriti.tiwari@wiom.in";
+  const SHIVANI = "shivani.sharma@wiom.in";
+  const POONAM  = "poonam.singh@wiom.in";
 
-  showModal(
-    "⚡ Auto-Assign Unassigned Tickets",
-    body,
+  const isAvail = email => allAvailable.some(a => a.email === email);
+  const getAdv  = email => allAvailable.find(a => a.email === email);
+
+  // Partner Misbehavior: Kriti primary, Shivani+Poonam fallback
+  const pmPool = isAvail(KRITI)
+    ? [getAdv(KRITI)].filter(Boolean)
+    : allAvailable.filter(a => [SHIVANI, POONAM].includes(a.email));
+
+  // Others: Shivani primary, Kriti+Poonam fallback
+  const othersPool = isAvail(SHIVANI)
+    ? [getAdv(SHIVANI)].filter(Boolean)
+    : allAvailable.filter(a => [KRITI, POONAM].includes(a.email));
+
+  // Regular pool: advisors not committed to specialty duties today
+  const specialtyEmails = new Set([...pmPool, ...othersPool].map(a => a.email));
+  const regularPool = allAvailable.filter(a => !specialtyEmails.has(a.email));
+  const effectiveRegularPool = regularPool.length ? regularPool : allAvailable;
+
+  // ── Ticket groups ─────────────────────────────────────────────────────────
+  const pmTickets      = unassigned.filter(t => t.dispL3 === "Partner Misbehavior");
+  const othersTickets  = unassigned.filter(t => t.dispL3 === "Others");
+  const regularTickets = unassigned.filter(t => t.dispL3 !== "Partner Misbehavior" && t.dispL3 !== "Others");
+
+  // ── Build assignments ─────────────────────────────────────────────────────
+  const assignments = [];
+  const distribute = (tickets, pool) => {
+    const effectivePool = pool.length ? pool : allAvailable;
+    tickets.forEach((t, i) => {
+      const adv = effectivePool[i % effectivePool.length];
+      assignments.push({ ticketNo: t.ticketNo, advisorEmail: adv.email, advisorName: adv.name });
+    });
+  };
+  distribute(pmTickets, pmPool);
+  distribute(othersTickets, othersPool);
+  distribute(regularTickets, effectiveRegularPool);
+
+  // ── Preview modal ─────────────────────────────────────────────────────────
+  const poolLine = (tickets, pool, label) => {
+    if (!tickets.length) return "";
+    const eff = pool.length ? pool : allAvailable;
+    return `<div style="padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <strong>${label}</strong> <span style="color:var(--text-muted)">(${tickets.length} tickets)</span>
+      → <span style="color:var(--accent)">${eff.map(a => a.name).join(", ")}</span>
+    </div>`;
+  };
+
+  const body = `
+    <p style="font-size:14px;margin-bottom:12px">
+      <strong>${unassigned.length}</strong> unassigned tickets will be assigned with specialty routing:
+    </p>
+    <div style="border:1px solid var(--border);border-radius:8px;padding:0 12px;margin-bottom:14px">
+      ${poolLine(pmTickets, pmPool, "Partner Misbehavior")}
+      ${poolLine(othersTickets, othersPool, "Others")}
+      ${poolLine(regularTickets, effectiveRegularPool, "All other tickets")}
+    </div>
+    <div style="font-size:12px;color:var(--text-muted)">
+      ${allAvailable.map(a => {
+        const count = assignments.filter(x => x.advisorEmail === a.email).length;
+        const h = allTickets.filter(t => t.assignedTo === a.email).length;
+        return `<div style="padding:2px 0">${a.name}: +${count} new (${h} currently holding)</div>`;
+      }).join("")}
+    </div>`;
+
+  showModal("⚡ Auto-Assign",  body,
     `<button class="btn btn-secondary" id="aa-cancel">Cancel</button>
-     <button class="btn btn-primary" id="aa-confirm">Confirm & Assign</button>`,
-    true
-  );
+     <button class="btn btn-primary" id="aa-confirm">Confirm & Assign</button>`, true);
 
   document.getElementById("aa-cancel").onclick = closeModal;
   document.getElementById("aa-confirm").onclick = async () => {
     const btn = document.getElementById("aa-confirm");
-    btn.disabled = true;
-    btn.textContent = "Assigning…";
+    btn.disabled = true; btn.textContent = "Assigning…";
     try {
-      // Round-robin across sorted advisors
-      const assignments = unassigned.map((t, i) => {
-        const adv = available[i % available.length];
-        return { ticketNo: t.ticketNo, advisorEmail: adv.email, advisorName: adv.name };
-      });
       showLoading(`Assigning ${unassigned.length} tickets…`);
       await bulkAssignTickets(assignments, currentActor);
       hideLoading();
-      showToast(`${unassigned.length} tickets assigned to ${available.length} advisors`, "success");
+      showToast(`${unassigned.length} tickets assigned`, "success");
       closeModal();
     } catch (e) {
       hideLoading();
