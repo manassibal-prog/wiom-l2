@@ -157,7 +157,7 @@ export function filterTickets(tickets, filters) {
     if (filters.zone && filters.zone !== "all" && t.zone !== filters.zone) return false;
     if (filters.status && filters.status !== "all" && t.platformStatus !== filters.status) return false;
     if (filters.advisor && filters.advisor !== "all" && t.assignedTo !== filters.advisor) return false;
-    if (filters.category && filters.category !== "all" && t.categoryGroup !== filters.category) return false;
+    if (filters.category && filters.category !== "all" && t.dispL3 !== filters.category) return false;
     if (filters.aging && filters.aging !== "all" && t.agingBucket !== filters.aging) return false;
     if (filters.reopenOnly && !t.reopenTag) return false;
     return true;
