@@ -36,7 +36,6 @@ export function mountTLDashboard(actor, container) {
   unsubUsers = subscribeToUsers(users => {
     allUsers = users;
     populateAdvisorFilter();
-    renderAdvisorStats();
   });
 }
 
@@ -49,7 +48,6 @@ export function unmountTLDashboard() {
 
 function buildShell() {
   return `
-    <div class="stats-grid" id="tl-stats"></div>
     <div class="card mb-5">
       <div class="filter-bar" id="tl-filter-bar">
         <input class="filter-input" id="fl-search" type="text" placeholder="Search ticket #, customer, phone…">
@@ -105,10 +103,6 @@ function buildShell() {
         <span class="pagination-info" id="tl-pag-info"></span>
         <div class="page-btns" id="tl-pag-btns"></div>
       </div>
-    </div>
-    <div class="card" id="advisor-stats-card" style="display:none">
-      <div class="card-header"><h3>Advisor Overview</h3></div>
-      <div class="card-body"><div class="advisor-grid" id="advisor-stats-grid"></div></div>
     </div>
   `;
 }
@@ -188,56 +182,9 @@ function applyFiltersAndRender() {
     return sortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
   });
   currentPage = 1;
-  renderStats();
   renderTable();
 }
 
-// ─── Stats ────────────────────────────────────────────────────────────────────
-
-function renderStats() {
-  const el = document.getElementById("tl-stats");
-  if (!el) return;
-  const open = allTickets.filter(t => CONFIG.STATUSES.OPEN.includes(t.platformStatus));
-  const unassigned = allTickets.filter(t => t.platformStatus === "New/Unassigned");
-  const escalated = allTickets.filter(t => t.platformStatus === "Escalated");
-  const critical = allTickets.filter(t => t.agingBucket === ">120 hrs");
-  const online = allUsers.filter(u => u.currentStatus === "Logged In");
-
-  el.innerHTML = `
-    <div class="stat-card"><div class="stat-label">Total Active</div><div class="stat-value">${allTickets.length}</div></div>
-    <div class="stat-card danger"><div class="stat-label">Unassigned</div><div class="stat-value">${unassigned.length}</div></div>
-    <div class="stat-card accent"><div class="stat-label">In Open State</div><div class="stat-value">${open.length}</div></div>
-    <div class="stat-card warning"><div class="stat-label">Escalated</div><div class="stat-value">${escalated.length}</div></div>
-    <div class="stat-card danger"><div class="stat-label">>120h Aging</div><div class="stat-value">${critical.length}</div></div>
-    <div class="stat-card success"><div class="stat-label">Advisors Online</div><div class="stat-value">${online.length}</div></div>
-    <div class="stat-card"><div class="stat-label">Filtered</div><div class="stat-value">${filtered.length}</div></div>
-  `;
-}
-
-function renderAdvisorStats() {
-  const advisors = allUsers.filter(u => u.role === "Advisor" && u.active);
-  if (!advisors.length) return;
-  const card = document.getElementById("advisor-stats-card");
-  const grid = document.getElementById("advisor-stats-grid");
-  if (!card || !grid) return;
-  card.style.display = "";
-  grid.innerHTML = advisors.map(a => {
-    const holding = allTickets.filter(t => t.assignedTo === a.email).length;
-    const presenceCls = a.currentStatus === "Logged In" ? "logged-in" : a.currentStatus === "On Break" ? "on-break" : "logged-out";
-    return `
-      <div class="advisor-card">
-        <div class="advisor-card-name" style="display:flex;align-items:center;gap:6px">
-          <span class="presence-dot ${presenceCls}"></span>${a.name}
-        </div>
-        <div class="advisor-card-stats">
-          <div class="advisor-stat"><div class="as-val">${holding}</div><div class="as-label">Holding</div></div>
-          <div class="advisor-stat"><div class="as-val">${a.todayResolvedCount || 0}</div><div class="as-label">Resolved</div></div>
-          <div class="advisor-stat"><div class="as-val">${a.todayAssignedCount || 0}</div><div class="as-label">Assigned</div></div>
-          <div class="advisor-stat"><div class="as-val">${a.currentStatus === "Logged In" ? "🟢" : a.currentStatus === "On Break" ? "🟡" : "⚫"}</div><div class="as-label">Status</div></div>
-        </div>
-      </div>`;
-  }).join("");
-}
 
 // ─── Table ────────────────────────────────────────────────────────────────────
 
