@@ -2,6 +2,7 @@ import { CONFIG } from './config.js';
 import { onAuthReady, signOutUser } from './auth.js';
 import { subscribeToUsers, createUser, updateUser, getRecentIngestionLogs, getSettings } from './db.js';
 import { showToast, showLoading, hideLoading, showModal, closeModal, formatDate, presenceDot } from './ui.js';
+import { mountDashboardView, unmountDashboardView } from './views/dashboard.js';
 import { mountTLDashboard, unmountTLDashboard } from './views/tl-dashboard.js';
 import { mountAdvisorView, unmountAdvisorView } from './views/advisor.js';
 import { mountManagerDashboard, unmountManagerDashboard } from './views/manager.js';
@@ -79,7 +80,7 @@ function renderThemeToggle() {
 
 function getDefaultView(role) {
   if (role === "Advisor") return "my-tickets";
-  return "tickets";
+  return "dashboard";
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
@@ -109,6 +110,7 @@ function renderSidebar() {
     ];
   } else if (isTL) {
     navItems = [
+      { id: "dashboard", icon: "📊", label: "Dashboard" },
       { id: "tickets", icon: "📋", label: "All Tickets" },
       { id: "roster", icon: "📅", label: "Roster" },
       { id: "users", icon: "👥", label: "Users" },
@@ -116,6 +118,7 @@ function renderSidebar() {
     ];
   } else if (isManager) {
     navItems = [
+      { id: "dashboard", icon: "📊", label: "Dashboard" },
       { id: "tickets", icon: "📋", label: "All Tickets" },
       { id: "roster", icon: "📅", label: "Roster" }
     ];
@@ -163,6 +166,7 @@ function refreshNavBadges() {
 function navigateTo(viewId) {
   // Unmount previous
   if (activeView) {
+    if (activeView === "dashboard") unmountDashboardView();
     if (activeView === "tickets" || activeView === "my-tickets-tl") unmountTLDashboard();
     if (activeView === "my-tickets") unmountAdvisorView();
     if (activeView === "tickets-mgr") unmountManagerDashboard();
@@ -183,6 +187,12 @@ function navigateTo(viewId) {
   const role = currentUser.role;
 
   switch (viewId) {
+    case "dashboard":
+      if (title) title.textContent = "Dashboard";
+      activeView = "dashboard";
+      mountDashboardView(currentUser, content);
+      break;
+
     case "tickets":
       if (title) title.textContent = "All Tickets";
       if (role === CONFIG.ROLES.TL) {
