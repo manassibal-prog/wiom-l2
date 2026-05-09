@@ -25,6 +25,8 @@ export function unmountDashboardView() {
   if (unsubUsers)   unsubUsers();
 }
 
+// ─── Shell ────────────────────────────────────────────────────────────────────
+
 function buildShell() {
   return `
     <div class="stats-grid" id="dash-stats"></div>
@@ -49,6 +51,8 @@ function buildShell() {
   `;
 }
 
+// ─── Stats ────────────────────────────────────────────────────────────────────
+
 function renderStats() {
   const el = document.getElementById("dash-stats");
   if (!el) return;
@@ -70,7 +74,10 @@ function renderStats() {
   `;
 }
 
+// ─── Breakdowns ───────────────────────────────────────────────────────────────
+
 function renderBreakdowns() {
+  // Status breakdown
   const statusEl = document.getElementById("dash-status-list");
   if (statusEl) {
     const counts = {};
@@ -87,6 +94,7 @@ function renderBreakdowns() {
       </div>`).join("");
   }
 
+  // Category breakdown
   const catEl = document.getElementById("dash-category-list");
   if (catEl) {
     const counts = {};
@@ -103,6 +111,8 @@ function renderBreakdowns() {
       </div>`).join("");
   }
 }
+
+// ─── Advisor Grid ─────────────────────────────────────────────────────────────
 
 function renderAdvisorGrid() {
   const advisors = allUsers.filter(u => u.role === "Advisor" && u.active);
