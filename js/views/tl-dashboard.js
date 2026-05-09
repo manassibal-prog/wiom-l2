@@ -60,7 +60,6 @@ function buildShell() {
         <select class="filter-select" id="fl-advisor"><option value="all">All Advisors</option></select>
         <select class="filter-select" id="fl-l3">
           <option value="all">All Categories</option>
-          ${Object.keys(CONFIG.COMPLAINT_CATEGORIES).map(l3 => `<option value="${l3}">${l3}</option>`).join("")}
         </select>
         <select class="filter-select" id="fl-l4" disabled>
           <option value="all">All Sub-types</option>
@@ -179,19 +178,36 @@ function populateZoneFilter() {
     zoneSelect.innerHTML = `<option value="all">All Zones</option>` +
       zones.map(z => `<option value="${z}" ${cur === z ? "selected" : ""}>${z}</option>`).join("");
   }
+
+  // Also repopulate L3 from live ticket data
+  const l3Select = document.getElementById("fl-l3");
+  if (l3Select) {
+    const cur = l3Select.value;
+    const l3Values = [...new Set(allTickets.map(t => t.dispL3).filter(Boolean))].sort();
+    l3Select.innerHTML = `<option value="all">All Categories</option>` +
+      l3Values.map(v => `<option value="${v}" ${cur === v ? "selected" : ""}>${v}</option>`).join("");
+    // If the previously selected L3 is still valid, keep L4 in sync
+    if (cur !== "all" && l3Values.includes(cur)) {
+      populateL4Filter(cur);
+    } else {
+      populateL4Filter("all");
+    }
+  }
 }
 
 function populateL4Filter(selectedL3) {
   const l4Select = document.getElementById("fl-l4");
   if (!l4Select) return;
-  if (selectedL3 === "all" || !CONFIG.COMPLAINT_CATEGORIES[selectedL3]) {
+  if (selectedL3 === "all") {
     l4Select.innerHTML = `<option value="all">All Sub-types</option>`;
     l4Select.disabled = true;
   } else {
-    const subs = CONFIG.COMPLAINT_CATEGORIES[selectedL3];
+    const subs = [...new Set(
+      allTickets.filter(t => t.dispL3 === selectedL3).map(t => t.dispL4).filter(Boolean)
+    )].sort();
     l4Select.innerHTML = `<option value="all">All Sub-types</option>` +
       subs.map(s => `<option value="${s}">${s}</option>`).join("");
-    l4Select.disabled = false;
+    l4Select.disabled = subs.length === 0;
     l4Select.value = currentFilters.l4 || "all";
   }
 }
