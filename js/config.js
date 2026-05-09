@@ -67,22 +67,6 @@ export const CONFIG = {
 
   CATEGORY_GROUPS: ["INTERNET", "OTHERS", "ALL"],
 
-  COMPLAINT_CATEGORIES: {
-    "Internet Issues": [
-      "Internet supply down",
-      "Recharge done but internet not working",
-      "Frequent Disconnection",
-      "Slow Speed/Range Issues",
-      "Optical Power Out of Range"
-    ],
-    "Partner Misbehavior": [
-      "Trying to Install Non-Wiom Connection",
-      "Took Extra Cash",
-      "Rude Behavior / Threats",
-      "Unauthorized Router Collection"
-    ]
-  },
-
   BREAK_CAP_MINUTES: 60,
   PAGE_SIZE: 50,
 
