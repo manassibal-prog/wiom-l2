@@ -26,7 +26,16 @@ let currentFilters = {
 
 export function mountTLDashboard(actor, container) {
   currentActor = actor;
-  container.innerHTML = buildShell();
+  // Reset state from any previous mount
+  currentFilters = { search: "", zone: "all", status: "all", advisor: "all", l3: "all", l4: "all", aging: "all", reopenOnly: false };
+  selectedTicketNos = new Set();
+  currentPage = 1;
+  try {
+    container.innerHTML = buildShell();
+  } catch (e) {
+    container.innerHTML = `<p style="padding:20px;color:var(--text-muted)">Error loading view: ${e.message}</p>`;
+    return;
+  }
   bindFilterEvents();
   bindBulkBar();
   unsubTickets = subscribeToTickets(tickets => {
