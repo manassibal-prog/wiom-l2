@@ -21,7 +21,7 @@ let unsubTickets, unsubUsers;
 let currentActor;
 let currentFilters = {
   search: "", zone: "all", status: "all",
-  advisor: "all", category: "all", aging: "all", reopenOnly: false
+  advisor: "all", l3: "all", l4: "all", aging: "all", reopenOnly: false
 };
 
 export function mountTLDashboard(actor, container) {
@@ -31,6 +31,7 @@ export function mountTLDashboard(actor, container) {
   bindBulkBar();
   unsubTickets = subscribeToTickets(tickets => {
     allTickets = tickets.filter(t => t.dispL3 !== "Shifting Request");
+    populateZoneFilter();
     applyFiltersAndRender();
   });
   unsubUsers = subscribeToUsers(users => {
@@ -57,8 +58,12 @@ function buildShell() {
           ${CONFIG.ALL_STATUSES.map(s => `<option value="${s}">${s}</option>`).join("")}
         </select>
         <select class="filter-select" id="fl-advisor"><option value="all">All Advisors</option></select>
-        <select class="filter-select" id="fl-category">
+        <select class="filter-select" id="fl-l3">
           <option value="all">All Categories</option>
+          ${Object.keys(CONFIG.COMPLAINT_CATEGORIES).map(l3 => `<option value="${l3}">${l3}</option>`).join("")}
+        </select>
+        <select class="filter-select" id="fl-l4" disabled>
+          <option value="all">All Sub-types</option>
         </select>
         <select class="filter-select" id="fl-aging">
           <option value="all">All Aging</option>
@@ -115,7 +120,13 @@ function bindFilterEvents() {
   document.getElementById("fl-zone").addEventListener("change", e => { currentFilters.zone = e.target.value; applyFiltersAndRender(); });
   document.getElementById("fl-status").addEventListener("change", e => { currentFilters.status = e.target.value; applyFiltersAndRender(); });
   document.getElementById("fl-advisor").addEventListener("change", e => { currentFilters.advisor = e.target.value; applyFiltersAndRender(); });
-  document.getElementById("fl-category").addEventListener("change", e => { currentFilters.category = e.target.value; applyFiltersAndRender(); });
+  document.getElementById("fl-l3").addEventListener("change", e => {
+    currentFilters.l3 = e.target.value;
+    currentFilters.l4 = "all";
+    populateL4Filter(e.target.value);
+    applyFiltersAndRender();
+  });
+  document.getElementById("fl-l4").addEventListener("change", e => { currentFilters.l4 = e.target.value; applyFiltersAndRender(); });
   document.getElementById("fl-aging").addEventListener("change", e => { currentFilters.aging = e.target.value; applyFiltersAndRender(); });
   document.getElementById("fl-reopen").addEventListener("change", e => { currentFilters.reopenOnly = e.target.checked; applyFiltersAndRender(); });
   document.getElementById("fl-clear").addEventListener("click", clearFilters);
@@ -141,11 +152,12 @@ function bindFilterEvents() {
 }
 
 function clearFilters() {
-  currentFilters = { search: "", zone: "all", status: "all", advisor: "all", category: "all", aging: "all", reopenOnly: false };
+  currentFilters = { search: "", zone: "all", status: "all", advisor: "all", l3: "all", l4: "all", aging: "all", reopenOnly: false };
   document.getElementById("fl-search").value = "";
-  ["fl-zone","fl-status","fl-advisor","fl-category","fl-aging"].forEach(id => {
+  ["fl-zone","fl-status","fl-advisor","fl-l3","fl-aging"].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = "all";
   });
+  populateL4Filter("all");
   document.getElementById("fl-reopen").checked = false;
   applyFiltersAndRender();
 }
@@ -157,7 +169,9 @@ function populateAdvisorFilter() {
   const advisors = allUsers.filter(u => u.role === "Advisor" && u.active);
   select.innerHTML = `<option value="all">All Advisors</option>` +
     advisors.map(a => `<option value="${a.email}" ${current === a.email ? "selected" : ""}>${a.name}</option>`).join("");
+}
 
+function populateZoneFilter() {
   const zones = [...new Set(allTickets.map(t => t.zone).filter(Boolean))].sort();
   const zoneSelect = document.getElementById("fl-zone");
   if (zoneSelect) {
@@ -165,13 +179,20 @@ function populateAdvisorFilter() {
     zoneSelect.innerHTML = `<option value="all">All Zones</option>` +
       zones.map(z => `<option value="${z}" ${cur === z ? "selected" : ""}>${z}</option>`).join("");
   }
+}
 
-  const categories = [...new Set(allTickets.map(t => t.dispL3).filter(Boolean))].sort();
-  const categorySelect = document.getElementById("fl-category");
-  if (categorySelect) {
-    const cur = categorySelect.value;
-    categorySelect.innerHTML = `<option value="all">All Categories</option>` +
-      categories.map(c => `<option value="${c}" ${cur === c ? "selected" : ""}>${c}</option>`).join("");
+function populateL4Filter(selectedL3) {
+  const l4Select = document.getElementById("fl-l4");
+  if (!l4Select) return;
+  if (selectedL3 === "all" || !CONFIG.COMPLAINT_CATEGORIES[selectedL3]) {
+    l4Select.innerHTML = `<option value="all">All Sub-types</option>`;
+    l4Select.disabled = true;
+  } else {
+    const subs = CONFIG.COMPLAINT_CATEGORIES[selectedL3];
+    l4Select.innerHTML = `<option value="all">All Sub-types</option>` +
+      subs.map(s => `<option value="${s}">${s}</option>`).join("");
+    l4Select.disabled = false;
+    l4Select.value = currentFilters.l4 || "all";
   }
 }
 
