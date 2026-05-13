@@ -54,6 +54,12 @@ export function subscribeToTickets(callback) {
   });
 }
 
+export async function getTickets() {
+  const q = query(collection(db, "tickets"), where("isArchived", "==", false));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
 export function subscribeToAdvisorTickets(email, callback) {
   const q = query(
     collection(db, "tickets"),
