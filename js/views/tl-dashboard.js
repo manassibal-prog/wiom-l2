@@ -1,6 +1,6 @@
 import { CONFIG } from '../config.js';
 import {
-  subscribeToTickets, subscribeToUsers,
+  getTickets, subscribeToUsers,
   assignTicket, bulkAssignTickets, getRoster
 } from '../db.js';
 import {
@@ -17,16 +17,26 @@ const PAGE_SIZE = CONFIG.PAGE_SIZE;
 let selectedTicketNos = new Set();
 let sortCol = "agingHours";
 let sortAsc = false;
-let unsubTickets, unsubUsers;
+let unsubUsers;
 let currentActor;
 let currentFilters = {
   search: "", zone: "all", status: "all",
   advisor: "all", l3: "all", l4: "all", aging: "all", reopenOnly: false
 };
 
+// ─── Scheduled Refresh ───────────────────────────────────────────────────────
+// Refresh at: 9:55 AM, 12:00 PM, 3:00 PM, 6:00 PM
+const REFRESH_TIMES = [
+  { hh: 9,  mm: 55, label: "Before 10 AM" },
+  { hh: 12, mm: 0,  label: "12 PM"        },
+  { hh: 15, mm: 0,  label: "3 PM"         },
+  { hh: 18, mm: 0,  label: "6 PM"         }
+];
+let schedulerInterval = null;
+let firedToday = { date: "", keys: new Set() };
+
 export function mountTLDashboard(actor, container) {
   currentActor = actor;
-  // Reset state from any previous mount
   currentFilters = { search: "", zone: "all", status: "all", advisor: "all", l3: "all", l4: "all", aging: "all", reopenOnly: false };
   selectedTicketNos = new Set();
   currentPage = 1;
@@ -38,20 +48,58 @@ export function mountTLDashboard(actor, container) {
   }
   bindFilterEvents();
   bindBulkBar();
-  unsubTickets = subscribeToTickets(tickets => {
-    allTickets = tickets.filter(t => t.dispL3 !== "Shifting Request");
-    populateZoneFilter();
-    applyFiltersAndRender();
-  });
+  fetchTickets();
   unsubUsers = subscribeToUsers(users => {
     allUsers = users;
     populateAdvisorFilter();
   });
+  startScheduler();
 }
 
 export function unmountTLDashboard() {
-  if (unsubTickets) unsubTickets();
   if (unsubUsers) unsubUsers();
+  stopScheduler();
+}
+
+async function fetchTickets(isScheduled = false) {
+  const btn = document.getElementById("tl-refresh-btn");
+  const info = document.getElementById("tl-refresh-info");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Loading…"; }
+  try {
+    const tickets = await getTickets();
+    allTickets = tickets.filter(t => t.dispL3 !== "Shifting Request");
+    populateZoneFilter();
+    applyFiltersAndRender();
+    const now = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    if (info) info.textContent = `Last refreshed: ${now}`;
+    if (isScheduled) showToast(`Auto-refreshed at ${now}`, "info", 3000);
+  } catch (e) {
+    showToast("Failed to load tickets: " + e.message, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "🔄 Refresh"; }
+  }
+}
+
+function startScheduler() {
+  stopScheduler();
+  schedulerInterval = setInterval(() => {
+    const now = new Date();
+    const todayStr = now.toDateString();
+    if (firedToday.date !== todayStr) firedToday = { date: todayStr, keys: new Set() };
+    const h = now.getHours(), m = now.getMinutes();
+    for (const t of REFRESH_TIMES) {
+      const key = `${t.hh}:${t.mm}`;
+      if (h === t.hh && m === t.mm && !firedToday.keys.has(key)) {
+        firedToday.keys.add(key);
+        fetchTickets(true);
+        break;
+      }
+    }
+  }, 30000); // check every 30 seconds
+}
+
+function stopScheduler() {
+  if (schedulerInterval) { clearInterval(schedulerInterval); schedulerInterval = null; }
 }
 
 // ─── Shell HTML ──────────────────────────────────────────────────────────────
@@ -82,8 +130,10 @@ function buildShell() {
         </label>
         <div class="filter-actions">
           <button class="btn btn-secondary btn-sm" id="fl-clear">Clear</button>
+          <button class="btn btn-secondary btn-sm" id="tl-refresh-btn">🔄 Refresh</button>
           <button class="btn btn-primary btn-sm" id="auto-assign-btn">⚡ Auto-Assign</button>
         </div>
+        <div style="font-size:11px;color:var(--text-muted);padding:4px 0" id="tl-refresh-info">Loading…</div>
       </div>
       <div class="bulk-bar" id="bulk-bar">
         <span class="bulk-count" id="bulk-count">0 selected</span>
@@ -138,6 +188,7 @@ function bindFilterEvents() {
   document.getElementById("fl-aging").addEventListener("change", e => { currentFilters.aging = e.target.value; applyFiltersAndRender(); });
   document.getElementById("fl-reopen").addEventListener("change", e => { currentFilters.reopenOnly = e.target.checked; applyFiltersAndRender(); });
   document.getElementById("fl-clear").addEventListener("click", clearFilters);
+  document.getElementById("tl-refresh-btn").addEventListener("click", () => fetchTickets(false));
   document.getElementById("auto-assign-btn").addEventListener("click", openAutoAssignModal);
 
   document.getElementById("select-all").addEventListener("change", e => {
