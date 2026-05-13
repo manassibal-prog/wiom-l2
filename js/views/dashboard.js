@@ -1,34 +1,88 @@
 import { CONFIG } from '../config.js';
-import { subscribeToTickets, subscribeToUsers } from '../db.js';
+import { getTickets, subscribeToUsers } from '../db.js';
 
 let allTickets = [];
 let allUsers   = [];
-let unsubTickets, unsubUsers;
+let unsubUsers;
+
+// ─── Scheduled Refresh ───────────────────────────────────────────────────────
+// Fires at: 9:55 AM, 12:00 PM, 3:00 PM, 6:00 PM
+const REFRESH_TIMES = [
+  { hh: 9,  mm: 55 },
+  { hh: 12, mm: 0  },
+  { hh: 15, mm: 0  },
+  { hh: 18, mm: 0  }
+];
+let schedulerInterval = null;
+let firedToday = { date: "", keys: new Set() };
 
 export function mountDashboardView(actor, container) {
   container.innerHTML = buildShell();
-  unsubTickets = subscribeToTickets(tickets => {
-    allTickets = tickets.filter(t => t.dispL3 !== "Shifting Request");
-    renderStats();
-    renderBreakdowns();
-    renderAdvisorGrid();
-  });
+  document.getElementById("dash-refresh-btn")?.addEventListener("click", () => fetchTickets(false));
+  fetchTickets();
   unsubUsers = subscribeToUsers(users => {
     allUsers = users;
     renderStats();
     renderAdvisorGrid();
   });
+  startScheduler();
 }
 
 export function unmountDashboardView() {
-  if (unsubTickets) unsubTickets();
-  if (unsubUsers)   unsubUsers();
+  if (unsubUsers) unsubUsers();
+  stopScheduler();
+}
+
+async function fetchTickets(isScheduled = false) {
+  const btn  = document.getElementById("dash-refresh-btn");
+  const info = document.getElementById("dash-refresh-info");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Loading…"; }
+  try {
+    const tickets = await getTickets();
+    allTickets = tickets.filter(t => t.dispL3 !== "Shifting Request");
+    renderStats();
+    renderBreakdowns();
+    renderAdvisorGrid();
+    const now = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    if (info) info.textContent = `Last refreshed: ${now}`;
+  } catch (e) {
+    if (info) info.textContent = "Error loading data";
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "🔄 Refresh"; }
+  }
+}
+
+function startScheduler() {
+  stopScheduler();
+  schedulerInterval = setInterval(() => {
+    const now = new Date();
+    const todayStr = now.toDateString();
+    if (firedToday.date !== todayStr) firedToday = { date: todayStr, keys: new Set() };
+    const h = now.getHours(), m = now.getMinutes();
+    for (const t of REFRESH_TIMES) {
+      const key = `${t.hh}:${t.mm}`;
+      if (h === t.hh && m === t.mm && !firedToday.keys.has(key)) {
+        firedToday.keys.add(key);
+        fetchTickets(true);
+        break;
+      }
+    }
+  }, 30000); // check every 30 seconds
+}
+
+function stopScheduler() {
+  if (schedulerInterval) { clearInterval(schedulerInterval); schedulerInterval = null; }
 }
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
 function buildShell() {
   return `
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-bottom:12px">
+      <span style="font-size:12px;color:var(--text-muted)" id="dash-refresh-info">Loading…</span>
+      <button class="btn btn-secondary btn-sm" id="dash-refresh-btn">🔄 Refresh</button>
+    </div>
+
     <div class="stats-grid" id="dash-stats"></div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
@@ -77,7 +131,6 @@ function renderStats() {
 // ─── Breakdowns ───────────────────────────────────────────────────────────────
 
 function renderBreakdowns() {
-  // Status breakdown
   const statusEl = document.getElementById("dash-status-list");
   if (statusEl) {
     const counts = {};
@@ -94,7 +147,6 @@ function renderBreakdowns() {
       </div>`).join("");
   }
 
-  // Category breakdown
   const catEl = document.getElementById("dash-category-list");
   if (catEl) {
     const counts = {};
