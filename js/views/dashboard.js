@@ -15,10 +15,11 @@ const REFRESH_TIMES = [
 ];
 let schedulerInterval = null;
 let firedToday = { date: "", keys: new Set() };
+let lastRefreshed = null;
 
 export function mountDashboardView(actor, container) {
   container.innerHTML = buildShell();
-  document.getElementById("dash-refresh-btn")?.addEventListener("click", () => fetchTickets(false));
+  document.getElementById("dash-refresh-btn")?.addEventListener("click", () => fetchTickets(true));
   fetchTickets();
   unsubUsers = subscribeToUsers(users => {
     allUsers = users;
@@ -33,18 +34,32 @@ export function unmountDashboardView() {
   stopScheduler();
 }
 
-async function fetchTickets(isScheduled = false) {
+async function fetchTickets(force = false) {
   const btn  = document.getElementById("dash-refresh-btn");
   const info = document.getElementById("dash-refresh-info");
+
+  // Use cached data if we have it and this isn't a forced refresh
+  if (!force && allTickets.length > 0) {
+    renderStats();
+    renderBreakdowns();
+    renderAdvisorGrid();
+    if (info && lastRefreshed) {
+      const t = lastRefreshed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+      info.textContent = `Last refreshed: ${t} (cached)`;
+    }
+    return;
+  }
+
   if (btn) { btn.disabled = true; btn.textContent = "⏳ Loading…"; }
   try {
     const tickets = await getTickets();
     allTickets = tickets.filter(t => t.dispL3 !== "Shifting Request");
+    lastRefreshed = new Date();
     renderStats();
     renderBreakdowns();
     renderAdvisorGrid();
-    const now = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-    if (info) info.textContent = `Last refreshed: ${now}`;
+    const t = lastRefreshed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    if (info) info.textContent = `Last refreshed: ${t}`;
   } catch (e) {
     if (info) info.textContent = "Error loading data";
   } finally {
@@ -63,7 +78,7 @@ function startScheduler() {
       const key = `${t.hh}:${t.mm}`;
       if (h === t.hh && m === t.mm && !firedToday.keys.has(key)) {
         firedToday.keys.add(key);
-        fetchTickets(true);
+        fetchTickets(true); // force = true for scheduled refresh
         break;
       }
     }
