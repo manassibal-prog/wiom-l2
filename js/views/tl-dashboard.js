@@ -34,6 +34,7 @@ const REFRESH_TIMES = [
 ];
 let schedulerInterval = null;
 let firedToday = { date: "", keys: new Set() };
+let lastRefreshed = null;
 
 export function mountTLDashboard(actor, container) {
   currentActor = actor;
@@ -61,18 +62,30 @@ export function unmountTLDashboard() {
   stopScheduler();
 }
 
-async function fetchTickets(isScheduled = false) {
-  const btn = document.getElementById("tl-refresh-btn");
+async function fetchTickets(force = false) {
+  const btn  = document.getElementById("tl-refresh-btn");
   const info = document.getElementById("tl-refresh-info");
+
+  // Use cached data if we have it and this isn't a forced refresh
+  if (!force && allTickets.length > 0) {
+    populateZoneFilter();
+    applyFiltersAndRender();
+    if (info && lastRefreshed) {
+      const t = lastRefreshed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+      info.textContent = `Last refreshed: ${t} (cached)`;
+    }
+    return;
+  }
+
   if (btn) { btn.disabled = true; btn.textContent = "⏳ Loading…"; }
   try {
     const tickets = await getTickets();
     allTickets = tickets.filter(t => t.dispL3 !== "Shifting Request");
+    lastRefreshed = new Date();
     populateZoneFilter();
     applyFiltersAndRender();
-    const now = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-    if (info) info.textContent = `Last refreshed: ${now}`;
-    if (isScheduled) showToast(`Auto-refreshed at ${now}`, "info", 3000);
+    const t = lastRefreshed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+    if (info) info.textContent = `Last refreshed: ${t}`;
   } catch (e) {
     showToast("Failed to load tickets: " + e.message, "error");
   } finally {
@@ -91,7 +104,7 @@ function startScheduler() {
       const key = `${t.hh}:${t.mm}`;
       if (h === t.hh && m === t.mm && !firedToday.keys.has(key)) {
         firedToday.keys.add(key);
-        fetchTickets(true);
+        fetchTickets(true); // force = true for scheduled refresh
         break;
       }
     }
@@ -188,7 +201,7 @@ function bindFilterEvents() {
   document.getElementById("fl-aging").addEventListener("change", e => { currentFilters.aging = e.target.value; applyFiltersAndRender(); });
   document.getElementById("fl-reopen").addEventListener("change", e => { currentFilters.reopenOnly = e.target.checked; applyFiltersAndRender(); });
   document.getElementById("fl-clear").addEventListener("click", clearFilters);
-  document.getElementById("tl-refresh-btn").addEventListener("click", () => fetchTickets(false));
+  document.getElementById("tl-refresh-btn").addEventListener("click", () => fetchTickets(true));
   document.getElementById("auto-assign-btn").addEventListener("click", openAutoAssignModal);
 
   document.getElementById("select-all").addEventListener("change", e => {
