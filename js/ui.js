@@ -154,13 +154,21 @@ export function filterTickets(tickets, filters) {
           !t.customerName?.toLowerCase().includes(q) &&
           !t.phone?.includes(q)) return false;
     }
-    if (filters.zone && filters.zone !== "all" && t.zone !== filters.zone) return false;
-    if (filters.status && filters.status !== "all" && t.platformStatus !== filters.status) return false;
-    if (filters.advisor && filters.advisor !== "all" && t.assignedTo !== filters.advisor) return false;
-    if (filters.category && filters.category !== "all" && t.dispL3 !== filters.category) return false;
-    if (filters.l3 && filters.l3 !== "all" && t.dispL3 !== filters.l3) return false;
-    if (filters.l4 && filters.l4 !== "all" && t.dispL4 !== filters.l4) return false;
-    if (filters.aging && filters.aging !== "all" && t.agingBucket !== filters.aging) return false;
+    // Multi-select (array): empty array = no filter; non-empty = must match one
+    if (filters.zones?.length    && !filters.zones.includes(t.zone))            return false;
+    if (filters.statuses?.length && !filters.statuses.includes(t.platformStatus)) return false;
+    if (filters.advisors?.length && !filters.advisors.includes(t.assignedTo))   return false;
+    if (filters.l3s?.length      && !filters.l3s.includes(t.dispL3))            return false;
+    if (filters.l4s?.length      && !filters.l4s.includes(t.dispL4))            return false;
+    if (filters.agings?.length   && !filters.agings.includes(t.agingBucket))    return false;
+    // Legacy single-value support (other views still use old format)
+    if (filters.zone     && filters.zone     !== "all" && t.zone            !== filters.zone)     return false;
+    if (filters.status   && filters.status   !== "all" && t.platformStatus  !== filters.status)   return false;
+    if (filters.advisor  && filters.advisor  !== "all" && t.assignedTo      !== filters.advisor)  return false;
+    if (filters.category && filters.category !== "all" && t.dispL3          !== filters.category) return false;
+    if (filters.l3       && filters.l3       !== "all" && t.dispL3          !== filters.l3)       return false;
+    if (filters.l4       && filters.l4       !== "all" && t.dispL4          !== filters.l4)       return false;
+    if (filters.aging    && filters.aging    !== "all" && t.agingBucket     !== filters.aging)    return false;
     if (filters.reopenOnly && !t.reopenTag) return false;
     return true;
   });
