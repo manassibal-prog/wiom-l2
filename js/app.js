@@ -20,6 +20,18 @@ showLoading("Checking authentication…");
 onAuthReady((user, errorCode) => {
   hideLoading();
   if (!user) {
+    if (errorCode === "firestore_unavailable") {
+      // Quota exceeded or Firestore temporarily down — don't redirect to login
+      const overlay = document.getElementById("loading-overlay");
+      const text = document.getElementById("loading-text");
+      if (overlay) overlay.style.display = "flex";
+      if (text) text.innerHTML =
+        "Unable to connect to the database.<br><br>" +
+        "<span style='font-size:13px;color:#aaa'>Firestore quota may be exceeded.<br>" +
+        "Quota resets daily at 12:30 PM IST.<br><br>" +
+        "<button onclick='location.reload()' style='margin-top:8px;padding:6px 16px;border-radius:6px;border:none;background:#4f8ef7;color:#fff;cursor:pointer;font-size:13px'>🔄 Try Again</button></span>";
+      return;
+    }
     if (errorCode === "no_user_doc") {
       window.location.href = "index.html?error=no_access";
     } else if (errorCode === "unauthorized_domain") {
