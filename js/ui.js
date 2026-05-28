@@ -155,12 +155,13 @@ export function filterTickets(tickets, filters) {
           !t.phone?.includes(q)) return false;
     }
     // Multi-select (array): empty array = no filter; non-empty = must match one
-    if (filters.zones?.length    && !filters.zones.includes(t.zone))            return false;
+    if (filters.partners?.length && !filters.partners.includes(t.mappedPartner)) return false;
+    if (filters.zones?.length    && !filters.zones.includes(t.zone))             return false;
     if (filters.statuses?.length && !filters.statuses.includes(t.platformStatus)) return false;
-    if (filters.advisors?.length && !filters.advisors.includes(t.assignedTo))   return false;
-    if (filters.l3s?.length      && !filters.l3s.includes(t.dispL3))            return false;
-    if (filters.l4s?.length      && !filters.l4s.includes(t.dispL4))            return false;
-    if (filters.agings?.length   && !filters.agings.includes(t.agingBucket))    return false;
+    if (filters.advisors?.length && !filters.advisors.includes(t.assignedTo))    return false;
+    if (filters.l3s?.length      && !filters.l3s.includes(t.dispL3))             return false;
+    if (filters.l4s?.length      && !filters.l4s.includes(t.dispL4))             return false;
+    if (filters.agings?.length   && !filters.agings.includes(t.agingBucket))     return false;
     // Legacy single-value support (other views still use old format)
     if (filters.zone     && filters.zone     !== "all" && t.zone            !== filters.zone)     return false;
     if (filters.status   && filters.status   !== "all" && t.platformStatus  !== filters.status)   return false;
