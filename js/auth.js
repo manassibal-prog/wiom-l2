@@ -37,7 +37,14 @@ export function onAuthReady(callback) {
       return;
     }
 
-    const userDoc = await getUser(email);
+    let userDoc;
+    try {
+      userDoc = await getUser(email);
+    } catch (e) {
+      callback(null, "firestore_unavailable");
+      return;
+    }
+
     if (!userDoc || !userDoc.active) {
       await signOut(auth);
       callback(null, "no_user_doc");
