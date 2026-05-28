@@ -10,8 +10,8 @@ import {
 } from '../ui.js';
 
 let allTickets = [];
-let allUsers = [];
-let filtered = [];
+let allUsers   = [];
+let filtered   = [];
 let currentPage = 1;
 const PAGE_SIZE = CONFIG.PAGE_SIZE;
 let selectedTicketNos = new Set();
@@ -20,17 +20,26 @@ let sortAsc = false;
 let unsubUsers;
 let currentActor;
 let currentFilters = {
-  search: "", zone: "all", status: "all",
-  advisor: "all", l3: "all", l4: "all", aging: "all", reopenOnly: false
+  search: "", zones: [], statuses: [],
+  advisors: [], l3s: [], l4s: [], agings: [], reopenOnly: false
+};
+
+// Document-level close handler — stored so we can remove it on unmount
+let _closeDropdownsHandler = null;
+
+// Default labels for each multi-select group
+const MS_LABELS = {
+  zones:    "All Zones",
+  statuses: "All Statuses",
+  advisors: "All Advisors",
+  l3s:      "All Categories",
+  l4s:      "All Sub-types",
+  agings:   "All Aging"
 };
 
 // ─── Scheduled Refresh ───────────────────────────────────────────────────────
-// Refresh at: 9:55 AM, 12:00 PM, 3:00 PM, 6:00 PM
 const REFRESH_TIMES = [
-  { hh: 9,  mm: 55, label: "Before 10 AM" },
-  { hh: 12, mm: 0,  label: "12 PM"        },
-  { hh: 15, mm: 0,  label: "3 PM"         },
-  { hh: 18, mm: 0,  label: "6 PM"         }
+  { hh: 9,  mm: 55 }, { hh: 12, mm: 0 }, { hh: 15, mm: 0 }, { hh: 18, mm: 0 }
 ];
 let schedulerInterval = null;
 let firedToday = { date: "", keys: new Set() };
@@ -38,7 +47,7 @@ let lastRefreshed = null;
 
 export function mountTLDashboard(actor, container) {
   currentActor = actor;
-  currentFilters = { search: "", zone: "all", status: "all", advisor: "all", l3: "all", l4: "all", aging: "all", reopenOnly: false };
+  currentFilters = { search: "", zones: [], statuses: [], advisors: [], l3s: [], l4s: [], agings: [], reopenOnly: false };
   selectedTicketNos = new Set();
   currentPage = 1;
   try {
@@ -60,13 +69,16 @@ export function mountTLDashboard(actor, container) {
 export function unmountTLDashboard() {
   if (unsubUsers) unsubUsers();
   stopScheduler();
+  if (_closeDropdownsHandler) {
+    document.removeEventListener("click", _closeDropdownsHandler);
+    _closeDropdownsHandler = null;
+  }
 }
 
 async function fetchTickets(force = false) {
   const btn  = document.getElementById("tl-refresh-btn");
   const info = document.getElementById("tl-refresh-info");
 
-  // Use cached data if we have it and this isn't a forced refresh
   if (!force && allTickets.length > 0) {
     populateZoneFilter();
     applyFiltersAndRender();
@@ -104,11 +116,11 @@ function startScheduler() {
       const key = `${t.hh}:${t.mm}`;
       if (h === t.hh && m === t.mm && !firedToday.keys.has(key)) {
         firedToday.keys.add(key);
-        fetchTickets(true); // force = true for scheduled refresh
+        fetchTickets(true);
         break;
       }
     }
-  }, 30000); // check every 30 seconds
+  }, 30000);
 }
 
 function stopScheduler() {
@@ -117,27 +129,60 @@ function stopScheduler() {
 
 // ─── Shell HTML ──────────────────────────────────────────────────────────────
 
-function buildShell() {
+function buildMSHTML(id, optionsHTML = "") {
   return `
+    <div class="ms-wrap" id="ms-wrap-${id}">
+      <button type="button" class="filter-select ms-btn" id="ms-btn-${id}">
+        ${MS_LABELS[id]} <span style="opacity:.5;margin-left:4px;font-size:10px">▾</span>
+      </button>
+      <div class="ms-drop" id="ms-drop-${id}">
+        <div class="ms-top">
+          <button type="button" class="btn btn-xs btn-secondary" data-ms-all="${id}">All</button>
+          <button type="button" class="btn btn-xs btn-secondary" data-ms-clear="${id}">Clear</button>
+        </div>
+        <div class="ms-opts" id="ms-opts-${id}">${optionsHTML}</div>
+      </div>
+    </div>`;
+}
+
+function buildShell() {
+  const statusOpts = CONFIG.ALL_STATUSES.map(s =>
+    `<label><input type="checkbox" class="ms-cb" data-group="statuses" value="${s}"><span>${s}</span></label>`
+  ).join("");
+
+  const agingOpts = CONFIG.AGING_BUCKETS.map(b =>
+    `<label><input type="checkbox" class="ms-cb" data-group="agings" value="${b}"><span>${b}</span></label>`
+  ).join("");
+
+  return `
+    <style>
+      .ms-wrap { position:relative; display:inline-block; }
+      .ms-btn  { cursor:pointer; text-align:left; white-space:nowrap; display:flex; align-items:center; justify-content:space-between; gap:4px; min-width:110px; }
+      .ms-drop {
+        display:none; position:absolute; top:calc(100% + 4px); left:0;
+        z-index:300; min-width:220px; max-width:320px;
+        background:var(--bg-elevated); border:1px solid var(--border);
+        border-radius:8px; box-shadow:0 6px 24px rgba(0,0,0,0.45); overflow:hidden;
+      }
+      .ms-drop.open { display:block; }
+      .ms-top  { display:flex; gap:6px; padding:7px 10px; border-bottom:1px solid var(--border); }
+      .ms-opts { max-height:230px; overflow-y:auto; padding:4px 0; }
+      .ms-opts label {
+        display:flex; align-items:center; gap:8px; padding:6px 12px;
+        cursor:pointer; font-size:12px; white-space:nowrap;
+      }
+      .ms-opts label:hover { background:rgba(255,255,255,0.06); }
+      .ms-opts input[type=checkbox] { flex-shrink:0; accent-color:var(--accent,#4f8ef7); }
+    </style>
     <div class="card mb-5">
       <div class="filter-bar" id="tl-filter-bar">
         <input class="filter-input" id="fl-search" type="text" placeholder="Search ticket #, customer, phone…">
-        <select class="filter-select" id="fl-zone"><option value="all">All Zones</option></select>
-        <select class="filter-select" id="fl-status">
-          <option value="all">All Statuses</option>
-          ${CONFIG.ALL_STATUSES.map(s => `<option value="${s}">${s}</option>`).join("")}
-        </select>
-        <select class="filter-select" id="fl-advisor"><option value="all">All Advisors</option></select>
-        <select class="filter-select" id="fl-l3">
-          <option value="all">All Categories</option>
-        </select>
-        <select class="filter-select" id="fl-l4" disabled>
-          <option value="all">All Sub-types</option>
-        </select>
-        <select class="filter-select" id="fl-aging">
-          <option value="all">All Aging</option>
-          ${CONFIG.AGING_BUCKETS.map(b => `<option value="${b}">${b}</option>`).join("")}
-        </select>
+        ${buildMSHTML("zones")}
+        ${buildMSHTML("statuses", statusOpts)}
+        ${buildMSHTML("advisors")}
+        ${buildMSHTML("l3s")}
+        ${buildMSHTML("l4s")}
+        ${buildMSHTML("agings", agingOpts)}
         <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer">
           <input type="checkbox" id="fl-reopen"> Reopens only
         </label>
@@ -183,23 +228,154 @@ function buildShell() {
   `;
 }
 
-// ─── Filter & Sort ────────────────────────────────────────────────────────────
+// ─── Multi-Select Helpers ─────────────────────────────────────────────────────
+
+function getMultiSelectValues(groupId) {
+  return [...document.querySelectorAll(`.ms-cb[data-group="${groupId}"]:checked`)].map(cb => cb.value);
+}
+
+function setMultiSelectLabel(groupId) {
+  const btn = document.getElementById(`ms-btn-${groupId}`);
+  if (!btn) return;
+  const vals = getMultiSelectValues(groupId);
+  const def  = MS_LABELS[groupId] || "All";
+  const arrow = `<span style="opacity:.5;margin-left:4px;font-size:10px">▾</span>`;
+  if (vals.length === 0) {
+    btn.innerHTML = `${def} ${arrow}`;
+  } else if (vals.length === 1) {
+    const short = vals[0].length > 22 ? vals[0].slice(0, 22) + "…" : vals[0];
+    btn.innerHTML = `${short} ${arrow}`;
+  } else {
+    btn.innerHTML = `${vals.length} selected ${arrow}`;
+  }
+}
+
+function populateMultiSelectOpts(groupId, values) {
+  const el = document.getElementById(`ms-opts-${groupId}`);
+  if (!el) return;
+  const current = getMultiSelectValues(groupId);
+  el.innerHTML = values.map(v => {
+    const checked = current.includes(v) ? "checked" : "";
+    return `<label><input type="checkbox" class="ms-cb" data-group="${groupId}" value="${v}" ${checked}><span>${v}</span></label>`;
+  }).join("");
+}
+
+// ─── Filter Population ────────────────────────────────────────────────────────
+
+function populateAdvisorFilter() {
+  const advisors = allUsers.filter(u => u.role === "Advisor" && u.active);
+  const current  = getMultiSelectValues("advisors");
+  const el = document.getElementById("ms-opts-advisors");
+  if (!el) return;
+  el.innerHTML = advisors.map(a => {
+    const checked = current.includes(a.email) ? "checked" : "";
+    return `<label><input type="checkbox" class="ms-cb" data-group="advisors" value="${a.email}" ${checked}><span>${a.name}</span></label>`;
+  }).join("");
+  setMultiSelectLabel("advisors");
+}
+
+function populateZoneFilter() {
+  const zones = [...new Set(allTickets.map(t => t.zone).filter(Boolean))].sort();
+  populateMultiSelectOpts("zones", zones);
+  setMultiSelectLabel("zones");
+
+  const l3s = [...new Set(allTickets.map(t => t.dispL3).filter(Boolean))].sort();
+  populateMultiSelectOpts("l3s", l3s);
+  setMultiSelectLabel("l3s");
+
+  populateL4Filter(getMultiSelectValues("l3s"));
+}
+
+function populateL4Filter(selectedL3s) {
+  const source = (selectedL3s && selectedL3s.length)
+    ? allTickets.filter(t => selectedL3s.includes(t.dispL3))
+    : allTickets;
+  const l4s = [...new Set(source.map(t => t.dispL4).filter(Boolean))].sort();
+
+  // Keep only still-valid L4 selections
+  const prevL4s = getMultiSelectValues("l4s").filter(v => l4s.includes(v));
+
+  const el = document.getElementById("ms-opts-l4s");
+  if (!el) return;
+  el.innerHTML = l4s.map(v => {
+    const checked = prevL4s.includes(v) ? "checked" : "";
+    return `<label><input type="checkbox" class="ms-cb" data-group="l4s" value="${v}" ${checked}><span>${v}</span></label>`;
+  }).join("");
+  setMultiSelectLabel("l4s");
+}
+
+// ─── Filter Events ────────────────────────────────────────────────────────────
 
 function bindFilterEvents() {
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
-  document.getElementById("fl-search").addEventListener("input", debounce(e => { currentFilters.search = e.target.value; applyFiltersAndRender(); }, 250));
-  document.getElementById("fl-zone").addEventListener("change", e => { currentFilters.zone = e.target.value; applyFiltersAndRender(); });
-  document.getElementById("fl-status").addEventListener("change", e => { currentFilters.status = e.target.value; applyFiltersAndRender(); });
-  document.getElementById("fl-advisor").addEventListener("change", e => { currentFilters.advisor = e.target.value; applyFiltersAndRender(); });
-  document.getElementById("fl-l3").addEventListener("change", e => {
-    currentFilters.l3 = e.target.value;
-    currentFilters.l4 = "all";
-    populateL4Filter(e.target.value);
+
+  document.getElementById("fl-search").addEventListener("input", debounce(e => {
+    currentFilters.search = e.target.value;
+    applyFiltersAndRender();
+  }, 250));
+
+  const filterBar = document.getElementById("tl-filter-bar");
+
+  // Checkbox changes (delegated)
+  filterBar.addEventListener("change", e => {
+    if (!e.target.classList.contains("ms-cb")) return;
+    const group = e.target.dataset.group;
+    setMultiSelectLabel(group);
+    if (group === "l3s") populateL4Filter(getMultiSelectValues("l3s"));
     applyFiltersAndRender();
   });
-  document.getElementById("fl-l4").addEventListener("change", e => { currentFilters.l4 = e.target.value; applyFiltersAndRender(); });
-  document.getElementById("fl-aging").addEventListener("change", e => { currentFilters.aging = e.target.value; applyFiltersAndRender(); });
-  document.getElementById("fl-reopen").addEventListener("change", e => { currentFilters.reopenOnly = e.target.checked; applyFiltersAndRender(); });
+
+  filterBar.addEventListener("click", e => {
+    // Toggle a dropdown open/closed
+    const btn = e.target.closest(".ms-btn");
+    if (btn) {
+      e.stopPropagation();
+      const id = btn.id.replace("ms-btn-", "");
+      // Close all other dropdowns
+      document.querySelectorAll(".ms-drop.open").forEach(d => {
+        if (d.id !== `ms-drop-${id}`) d.classList.remove("open");
+      });
+      document.getElementById(`ms-drop-${id}`)?.classList.toggle("open");
+      return;
+    }
+
+    // Don't propagate clicks inside an open dropdown (prevents close-on-click)
+    if (e.target.closest(".ms-drop")) {
+      e.stopPropagation();
+    }
+
+    // "All" button — check every checkbox in this group
+    if (e.target.dataset.msAll) {
+      const group = e.target.dataset.msAll;
+      document.querySelectorAll(`.ms-cb[data-group="${group}"]`).forEach(cb => cb.checked = true);
+      setMultiSelectLabel(group);
+      if (group === "l3s") populateL4Filter(getMultiSelectValues("l3s"));
+      applyFiltersAndRender();
+    }
+
+    // "Clear" button — uncheck every checkbox in this group
+    if (e.target.dataset.msClear) {
+      const group = e.target.dataset.msClear;
+      document.querySelectorAll(`.ms-cb[data-group="${group}"]`).forEach(cb => cb.checked = false);
+      setMultiSelectLabel(group);
+      if (group === "l3s") {
+        document.querySelectorAll('.ms-cb[data-group="l4s"]').forEach(cb => cb.checked = false);
+        setMultiSelectLabel("l4s");
+        populateL4Filter([]);
+      }
+      applyFiltersAndRender();
+    }
+  });
+
+  // Close all dropdowns when clicking anywhere outside
+  _closeDropdownsHandler = () => document.querySelectorAll(".ms-drop.open").forEach(d => d.classList.remove("open"));
+  document.addEventListener("click", _closeDropdownsHandler);
+
+  document.getElementById("fl-reopen").addEventListener("change", e => {
+    currentFilters.reopenOnly = e.target.checked;
+    applyFiltersAndRender();
+  });
+
   document.getElementById("fl-clear").addEventListener("click", clearFilters);
   document.getElementById("tl-refresh-btn").addEventListener("click", () => fetchTickets(true));
   document.getElementById("auto-assign-btn").addEventListener("click", openAutoAssignModal);
@@ -224,68 +400,24 @@ function bindFilterEvents() {
 }
 
 function clearFilters() {
-  currentFilters = { search: "", zone: "all", status: "all", advisor: "all", l3: "all", l4: "all", aging: "all", reopenOnly: false };
+  currentFilters = { search: "", zones: [], statuses: [], advisors: [], l3s: [], l4s: [], agings: [], reopenOnly: false };
   document.getElementById("fl-search").value = "";
-  ["fl-zone","fl-status","fl-advisor","fl-l3","fl-aging"].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = "all";
+  Object.keys(MS_LABELS).forEach(group => {
+    document.querySelectorAll(`.ms-cb[data-group="${group}"]`).forEach(cb => cb.checked = false);
+    setMultiSelectLabel(group);
   });
-  populateL4Filter("all");
   document.getElementById("fl-reopen").checked = false;
   applyFiltersAndRender();
 }
 
-function populateAdvisorFilter() {
-  const select = document.getElementById("fl-advisor");
-  if (!select) return;
-  const current = select.value;
-  const advisors = allUsers.filter(u => u.role === "Advisor" && u.active);
-  select.innerHTML = `<option value="all">All Advisors</option>` +
-    advisors.map(a => `<option value="${a.email}" ${current === a.email ? "selected" : ""}>${a.name}</option>`).join("");
-}
-
-function populateZoneFilter() {
-  const zones = [...new Set(allTickets.map(t => t.zone).filter(Boolean))].sort();
-  const zoneSelect = document.getElementById("fl-zone");
-  if (zoneSelect) {
-    const cur = zoneSelect.value;
-    zoneSelect.innerHTML = `<option value="all">All Zones</option>` +
-      zones.map(z => `<option value="${z}" ${cur === z ? "selected" : ""}>${z}</option>`).join("");
-  }
-
-  // Also repopulate L3 from live ticket data
-  const l3Select = document.getElementById("fl-l3");
-  if (l3Select) {
-    const cur = l3Select.value;
-    const l3Values = [...new Set(allTickets.map(t => t.dispL3).filter(Boolean))].sort();
-    l3Select.innerHTML = `<option value="all">All Categories</option>` +
-      l3Values.map(v => `<option value="${v}" ${cur === v ? "selected" : ""}>${v}</option>`).join("");
-    // If the previously selected L3 is still valid, keep L4 in sync
-    if (cur !== "all" && l3Values.includes(cur)) {
-      populateL4Filter(cur);
-    } else {
-      populateL4Filter("all");
-    }
-  }
-}
-
-function populateL4Filter(selectedL3) {
-  const l4Select = document.getElementById("fl-l4");
-  if (!l4Select) return;
-  if (selectedL3 === "all") {
-    l4Select.innerHTML = `<option value="all">All Sub-types</option>`;
-    l4Select.disabled = true;
-  } else {
-    const subs = [...new Set(
-      allTickets.filter(t => t.dispL3 === selectedL3).map(t => t.dispL4).filter(Boolean)
-    )].sort();
-    l4Select.innerHTML = `<option value="all">All Sub-types</option>` +
-      subs.map(s => `<option value="${s}">${s}</option>`).join("");
-    l4Select.disabled = subs.length === 0;
-    l4Select.value = currentFilters.l4 || "all";
-  }
-}
-
 function applyFiltersAndRender() {
+  currentFilters.zones    = getMultiSelectValues("zones");
+  currentFilters.statuses = getMultiSelectValues("statuses");
+  currentFilters.advisors = getMultiSelectValues("advisors");
+  currentFilters.l3s      = getMultiSelectValues("l3s");
+  currentFilters.l4s      = getMultiSelectValues("l4s");
+  currentFilters.agings   = getMultiSelectValues("agings");
+
   filtered = filterTickets(allTickets, currentFilters);
   filtered.sort((a, b) => {
     const va = a[sortCol] ?? 0, vb = b[sortCol] ?? 0;
@@ -295,7 +427,6 @@ function applyFiltersAndRender() {
   renderTable();
 }
 
-
 // ─── Table ────────────────────────────────────────────────────────────────────
 
 function getPageTicketNos() {
@@ -304,16 +435,16 @@ function getPageTicketNos() {
 }
 
 function renderTable() {
-  const tbody = document.getElementById("tl-tbody");
+  const tbody   = document.getElementById("tl-tbody");
   const pagInfo = document.getElementById("tl-pag-info");
   const pagBtns = document.getElementById("tl-pag-btns");
   if (!tbody) return;
 
-  const total = filtered.length;
+  const total      = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   if (currentPage > totalPages) currentPage = 1;
   const start = (currentPage - 1) * PAGE_SIZE;
-  const page = filtered.slice(start, start + PAGE_SIZE);
+  const page  = filtered.slice(start, start + PAGE_SIZE);
 
   if (pagInfo) pagInfo.textContent = total
     ? `Showing ${start + 1}–${Math.min(start + PAGE_SIZE, total)} of ${total}`
@@ -348,7 +479,6 @@ function renderTable() {
     </tr>`;
   }).join("");
 
-  // Row events
   tbody.querySelectorAll(".row-cb").forEach(cb => {
     cb.addEventListener("change", e => {
       const id = e.target.dataset.id;
@@ -387,7 +517,7 @@ function renderTable() {
 // ─── Bulk Bar ─────────────────────────────────────────────────────────────────
 
 function updateBulkBar() {
-  const bar = document.getElementById("bulk-bar");
+  const bar   = document.getElementById("bulk-bar");
   const count = document.getElementById("bulk-count");
   if (!bar) return;
   if (selectedTicketNos.size > 0) {
@@ -401,9 +531,9 @@ function updateBulkBar() {
 function bindBulkBar() {
   setTimeout(() => {
     const assignBtn = document.getElementById("bulk-assign-btn");
-    const clearBtn = document.getElementById("bulk-clear-btn");
+    const clearBtn  = document.getElementById("bulk-clear-btn");
     if (assignBtn) assignBtn.addEventListener("click", () => openAssignModal([...selectedTicketNos]));
-    if (clearBtn) clearBtn.addEventListener("click", () => {
+    if (clearBtn)  clearBtn.addEventListener("click", () => {
       selectedTicketNos.clear();
       updateBulkBar();
       renderTable();
@@ -463,14 +593,11 @@ function openAssignModal(ticketNos) {
   document.getElementById("assign-confirm").onclick = async () => {
     try {
       const confirmBtn = document.getElementById("assign-confirm");
-      confirmBtn.disabled = true;
-      confirmBtn.textContent = "Assigning…";
+      confirmBtn.disabled = true; confirmBtn.textContent = "Assigning…";
 
       if (isBulk) {
         const selected = [...document.querySelectorAll(".adv-cb:checked")];
         if (!selected.length) { showToast("Select at least one advisor", "warning"); confirmBtn.disabled = false; confirmBtn.textContent = "Assign"; return; }
-
-        // Round-robin
         const assignments = ticketNos.map((tn, i) => {
           const adv = selected[i % selected.length];
           return { ticketNo: tn, advisorEmail: adv.value, advisorName: adv.dataset.name };
@@ -512,7 +639,6 @@ async function openAutoAssignModal() {
 
   const rosterEntries = roster?.advisors || {};
 
-  // All available advisors today (P or WFH), sorted by least loaded
   const allAvailable = allUsers
     .filter(u => u.role === "Advisor" && u.active && CONFIG.AVAILABLE_CODES.includes(rosterEntries[u.email]))
     .sort((a, b) => {
@@ -529,7 +655,6 @@ async function openAutoAssignModal() {
     return;
   }
 
-  // ── Specialty routing ─────────────────────────────────────────────────────
   const KRITI   = "kriti.tiwari@wiom.in";
   const SHIVANI = "shivani.sharma@wiom.in";
   const POONAM  = "poonam.singh@wiom.in";
@@ -537,32 +662,27 @@ async function openAutoAssignModal() {
   const isAvail = email => allAvailable.some(a => a.email === email);
   const getAdv  = email => allAvailable.find(a => a.email === email);
 
-  // Partner Misbehavior: Kriti primary, Shivani+Poonam fallback
   const pmPool = isAvail(KRITI)
     ? [getAdv(KRITI)].filter(Boolean)
     : allAvailable.filter(a => [SHIVANI, POONAM].includes(a.email));
 
-  // Others: Shivani primary, Kriti+Poonam fallback
   const othersPool = isAvail(SHIVANI)
     ? [getAdv(SHIVANI)].filter(Boolean)
     : allAvailable.filter(a => [KRITI, POONAM].includes(a.email));
 
-  // Regular pool: advisors not committed to specialty duties today
-  const specialtyEmails = new Set([...pmPool, ...othersPool].map(a => a.email));
-  const regularPool = allAvailable.filter(a => !specialtyEmails.has(a.email));
+  const specialtyEmails  = new Set([...pmPool, ...othersPool].map(a => a.email));
+  const regularPool      = allAvailable.filter(a => !specialtyEmails.has(a.email));
   const effectiveRegularPool = regularPool.length ? regularPool : allAvailable;
 
-  // ── Ticket groups ─────────────────────────────────────────────────────────
   const pmTickets      = unassigned.filter(t => t.dispL3 === "Partner Misbehavior");
   const othersTickets  = unassigned.filter(t => t.dispL3 === "Others");
   const regularTickets = unassigned.filter(t => t.dispL3 !== "Partner Misbehavior" && t.dispL3 !== "Others");
 
-  // ── Build assignments ─────────────────────────────────────────────────────
   const assignments = [];
-  const distribute = (tickets, pool) => {
-    const effectivePool = pool.length ? pool : allAvailable;
+  const distribute  = (tickets, pool) => {
+    const eff = pool.length ? pool : allAvailable;
     tickets.forEach((t, i) => {
-      const adv = effectivePool[i % effectivePool.length];
+      const adv = eff[i % eff.length];
       assignments.push({ ticketNo: t.ticketNo, advisorEmail: adv.email, advisorName: adv.name });
     });
   };
@@ -570,7 +690,6 @@ async function openAutoAssignModal() {
   distribute(othersTickets, othersPool);
   distribute(regularTickets, effectiveRegularPool);
 
-  // ── Preview modal ─────────────────────────────────────────────────────────
   const poolLine = (tickets, pool, label) => {
     if (!tickets.length) return "";
     const eff = pool.length ? pool : allAvailable;
@@ -592,12 +711,12 @@ async function openAutoAssignModal() {
     <div style="font-size:12px;color:var(--text-muted)">
       ${allAvailable.map(a => {
         const count = assignments.filter(x => x.advisorEmail === a.email).length;
-        const h = allTickets.filter(t => t.assignedTo === a.email).length;
+        const h     = allTickets.filter(t => t.assignedTo === a.email).length;
         return `<div style="padding:2px 0">${a.name}: +${count} new (${h} currently holding)</div>`;
       }).join("")}
     </div>`;
 
-  showModal("⚡ Auto-Assign",  body,
+  showModal("⚡ Auto-Assign", body,
     `<button class="btn btn-secondary" id="aa-cancel">Cancel</button>
      <button class="btn btn-primary" id="aa-confirm">Confirm & Assign</button>`, true);
 
