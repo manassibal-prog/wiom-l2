@@ -39,7 +39,11 @@ const MS_LABELS = {
 
 // ─── Scheduled Refresh ───────────────────────────────────────────────────────
 const REFRESH_TIMES = [
-  { hh: 9, mm: 55 }, { hh: 12, mm: 0 }, { hh: 15, mm: 0 }, { hh: 18, mm: 0 }
+  { hh: 10, mm: 30 },
+  { hh: 12, mm: 30 },
+  { hh: 14, mm: 30 },
+  { hh: 16, mm: 30 },
+  { hh: 18, mm: 30 }
 ];
 let schedulerInterval = null;
 let firedToday = { date: "", keys: new Set() };
