@@ -106,8 +106,8 @@ function renderSidebar() {
   const brand = document.getElementById("sidebar-brand");
   if (brand) {
     brand.innerHTML = `
-      <h1>WIOM L2</h1>
-      <p>Escalation Platform</p>
+      <h1>WIOM</h1>
+      <p>Partner Follow-Up Tickets</p>
     `;
   }
 
