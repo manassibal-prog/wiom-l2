@@ -231,7 +231,7 @@ function navigateTo(viewId) {
       break;
 
     case "my-tickets":
-      if (title) title.textContent = "My Tickets";
+      if (title) title.textContent = `Tickets for ${currentUser.name}`;
       mountAdvisorView(currentUser, content);
       break;
 
