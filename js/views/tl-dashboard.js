@@ -5,7 +5,7 @@ import {
 } from '../db.js';
 import {
   showToast, showLoading, hideLoading, showModal, closeModal,
-  showConfirm, statusBadge, agingBadge, formatDate, kaptureLink,
+  showConfirm, statusBadge, agingBadge, formatDate, formatDateShort, kaptureLink,
   filterTickets, renderPagination, showTicketDetail
 } from '../ui.js';
 
@@ -39,11 +39,7 @@ const MS_LABELS = {
 
 // ─── Scheduled Refresh ───────────────────────────────────────────────────────
 const REFRESH_TIMES = [
-  { hh: 10, mm: 30 },
-  { hh: 12, mm: 30 },
-  { hh: 14, mm: 30 },
-  { hh: 16, mm: 30 },
-  { hh: 18, mm: 30 }
+  { hh: 10, mm: 30 }, { hh: 12, mm: 30 }, { hh: 14, mm: 30 }, { hh: 16, mm: 30 }, { hh: 18, mm: 30 }
 ];
 let schedulerInterval = null;
 let firedToday = { date: "", keys: new Set() };
@@ -206,6 +202,7 @@ function buildShell() {
               <th class="sortable" data-col="agingHours">Aging ↕</th>
               <th>Platform Status</th>
               <th>Assigned To</th>
+              <th>Created</th>
               <th>Assigned On</th>
               <th>Reopen</th>
               <th>Actions</th>
@@ -445,7 +442,7 @@ function renderTable() {
     : "No tickets";
 
   if (!page.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="14">No tickets match the current filters.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="15">No tickets match the current filters.</td></tr>`;
     if (pagBtns) pagBtns.innerHTML = "";
     return;
   }
@@ -464,6 +461,7 @@ function renderTable() {
       <td>${agingBadge(t.agingBucket, t.agingHours)}</td>
       <td>${statusBadge(t.platformStatus)}</td>
       <td class="td-wrap">${t.assignedToName || '<span class="text-muted">Unassigned</span>'}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${formatDateShort(t.firstSeenDate)}</td>
       <td style="font-size:11px;color:var(--text-muted)">${t.assignedDate ? formatDate(t.assignedDate) : "—"}</td>
       <td>${t.reopenTag ? '<span class="badge badge-escalated">⚠ Reopen</span>' : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td class="td-actions">

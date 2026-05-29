@@ -4,7 +4,7 @@ import { subscribeToUsers, createUser, updateUser, getRecentIngestionLogs, getSe
 import { showToast, showLoading, hideLoading, showModal, closeModal, formatDate, presenceDot } from './ui.js';
 import { mountDashboardView, unmountDashboardView } from './views/dashboard.js';
 import { mountTLDashboard, unmountTLDashboard } from './views/tl-dashboard.js';
-import { mountAdvisorView, unmountAdvisorView } from './views/advisor.js';
+import { initAdvisorSidebar, mountAdvisorDashboard, mountAdvisorView, unmountAdvisorView } from './views/advisor.js';
 import { mountManagerDashboard, unmountManagerDashboard } from './views/manager.js';
 import { mountRosterView, unmountRosterView } from './views/roster.js';
 
@@ -53,6 +53,11 @@ function bootApp() {
   renderSidebar();
   renderThemeToggle();
 
+  // Initialize advisor sidebar attendance (async fire-and-forget)
+  if (currentUser.role === CONFIG.ROLES.ADVISOR) {
+    initAdvisorSidebar(currentUser);
+  }
+
   // Start user subscription for admin panel
   unsubUsers = subscribeToUsers(users => {
     allUsers = users;
@@ -91,7 +96,7 @@ function renderThemeToggle() {
 }
 
 function getDefaultView(role) {
-  if (role === "Advisor") return "my-tickets";
+  if (role === "Advisor") return "my-dashboard";
   return "dashboard";
 }
 
@@ -118,7 +123,8 @@ function renderSidebar() {
 
   if (isAdvisor) {
     navItems = [
-      { id: "my-tickets", icon: "🎫", label: "My Tickets" }
+      { id: "my-dashboard", icon: "📊", label: "Dashboard" },
+      { id: "my-tickets",   icon: "🎫", label: "My Tickets" }
     ];
   } else if (isTL) {
     navItems = [
@@ -152,6 +158,7 @@ function renderSidebar() {
   if (footer) {
     const initials = currentUser.name?.split(" ").map(n => n[0]).join("").slice(0, 2) || "?";
     footer.innerHTML = `
+      ${isAdvisor ? '<div id="sidebar-attendance"></div>' : ""}
       <div class="user-card">
         <div class="user-avatar">${initials}</div>
         <div class="user-info">
@@ -181,6 +188,7 @@ function navigateTo(viewId) {
     if (activeView === "dashboard") unmountDashboardView();
     if (activeView === "tickets" || activeView === "my-tickets-tl") unmountTLDashboard();
     if (activeView === "my-tickets") unmountAdvisorView();
+    if (activeView === "my-dashboard") { /* dashboard has no cleanup needed */ }
     if (activeView === "tickets-mgr") unmountManagerDashboard();
     if (activeView === "roster" || activeView === "roster-ro") unmountRosterView();
   }
@@ -214,6 +222,12 @@ function navigateTo(viewId) {
         activeView = "tickets-mgr";
         mountManagerDashboard(currentUser, content);
       }
+      break;
+
+    case "my-dashboard":
+      if (title) title.textContent = "Dashboard";
+      activeView = "my-dashboard";
+      mountAdvisorDashboard(currentUser, content);
       break;
 
     case "my-tickets":
