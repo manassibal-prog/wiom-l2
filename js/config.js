@@ -9,7 +9,8 @@ export const FIREBASE_CONFIG = {
 
 export const CONFIG = {
   ALLOWED_DOMAIN: "wiom.in",
-  DATABASE_ID: "pft-tickets",
+  SHEET_API_URL: "https://script.google.com/macros/s/AKfycbz5SfomgNnKbXw-IQ2JfrQoejqysLgCmLbKiB_GweeoC3vz1NcZ3s3WUChgbspRGVwb/exec",
+  API_KEY: "wiom-pft-2026",
 
   STATUSES: {
     OPEN: [
