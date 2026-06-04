@@ -150,9 +150,9 @@ export function filterTickets(tickets, filters) {
   return tickets.filter(t => {
     if (filters.search) {
       const q = filters.search.toLowerCase();
-      if (!t.ticketNo?.toLowerCase().includes(q) &&
-          !t.customerName?.toLowerCase().includes(q) &&
-          !t.phone?.includes(q)) return false;
+      if (!String(t.ticketNo    || '').toLowerCase().includes(q) &&
+          !String(t.customerName || '').toLowerCase().includes(q) &&
+          !String(t.phone        || '').includes(q)) return false;
     }
     // Multi-select (array): empty array = no filter; non-empty = must match one
     if (filters.partners?.length && !filters.partners.includes(t.mappedPartner)) return false;
