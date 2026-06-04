@@ -1,5 +1,6 @@
 import { CONFIG } from '../config.js';
 import { getTickets, subscribeToUsers } from '../db.js';
+import { statusBadge } from '../ui.js';
 
 let allTickets = [];
 let allUsers   = [];
@@ -44,6 +45,7 @@ async function fetchTickets(force = false) {
     renderStats();
     renderBreakdowns();
     renderAdvisorGrid();
+    renderPivotTables();
     if (info && lastRefreshed) {
       const t = lastRefreshed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
       info.textContent = `Last refreshed: ${t} (cached)`;
@@ -59,6 +61,7 @@ async function fetchTickets(force = false) {
     renderStats();
     renderBreakdowns();
     renderAdvisorGrid();
+    renderPivotTables();
     const t = lastRefreshed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
     if (info) info.textContent = `Last refreshed: ${t}`;
   } catch (e) {
@@ -118,6 +121,8 @@ function buildShell() {
         <div class="advisor-grid" id="dash-advisor-grid"></div>
       </div>
     </div>
+
+    <div id="dash-pivots"></div>
   `;
 }
 
@@ -178,6 +183,79 @@ function renderBreakdowns() {
         </div>
       </div>`).join("");
   }
+}
+
+// ─── Pivot Tables ─────────────────────────────────────────────────────────────
+
+function buildPivotHTML(title, tickets, rowFn) {
+  const BUCKETS = CONFIG.AGING_BUCKETS;
+  const pivot   = {};
+  const bucketTotals = {};
+
+  tickets.forEach(t => {
+    const rowVal = rowFn(t) || "—";
+    const bucket = t.agingBucket || "—";
+    if (!pivot[rowVal]) pivot[rowVal] = {};
+    pivot[rowVal][bucket] = (pivot[rowVal][bucket] || 0) + 1;
+    bucketTotals[bucket] = (bucketTotals[bucket] || 0) + 1;
+  });
+
+  // Only show buckets that have at least 1 ticket
+  const activeBuckets = BUCKETS.filter(b => bucketTotals[b] > 0);
+
+  // Sort rows by grand total descending
+  const rows = Object.entries(pivot).sort((a, b) => {
+    const ta = Object.values(a[1]).reduce((s, v) => s + v, 0);
+    const tb = Object.values(b[1]).reduce((s, v) => s + v, 0);
+    return tb - ta;
+  });
+
+  const rowsHTML = rows.map(([rowVal, buckets]) => {
+    const rowTotal = Object.values(buckets).reduce((s, v) => s + v, 0);
+    return `<tr>
+      <td style="font-size:12px;white-space:nowrap">${rowVal}</td>
+      ${activeBuckets.map(b => `<td style="text-align:center;font-size:12px">${buckets[b] || ""}</td>`).join("")}
+      <td style="text-align:center;font-size:12px;font-weight:600">${rowTotal}</td>
+    </tr>`;
+  }).join("");
+
+  const footHTML = `
+    <tr style="font-weight:700;border-top:2px solid var(--border);background:var(--bg-elevated)">
+      <td style="font-size:12px">Grand Total</td>
+      ${activeBuckets.map(b => `<td style="text-align:center;font-size:12px">${bucketTotals[b] || ""}</td>`).join("")}
+      <td style="text-align:center;font-size:12px">${tickets.length}</td>
+    </tr>`;
+
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header"><h3>${title}</h3></div>
+      <div style="overflow-x:auto">
+        <table class="data-table" style="width:100%;font-size:12px">
+          <thead>
+            <tr>
+              <th style="text-align:left;min-width:200px"> </th>
+              ${activeBuckets.map(b => `<th style="text-align:center;white-space:nowrap">${b}</th>`).join("")}
+              <th style="text-align:center;white-space:nowrap">Grand Total</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHTML}</tbody>
+          <tfoot>${footHTML}</tfoot>
+        </table>
+      </div>
+    </div>`;
+}
+
+function renderPivotTables() {
+  const el = document.getElementById("dash-pivots");
+  if (!el || !allTickets.length) return;
+
+  const withL4      = allTickets.filter(t => t.dispL4);
+  const withAdvisor = allTickets.filter(t => t.assignedToName);
+
+  el.innerHTML =
+    buildPivotHTML("Sub-type × Aging", withL4, t => t.dispL4) +
+    buildPivotHTML("Advisor × Aging",  withAdvisor, t => t.assignedToName) +
+    buildPivotHTML("Platform Status × Aging", allTickets, t => t.platformStatus);
 }
 
 // ─── Advisor Grid ─────────────────────────────────────────────────────────────
