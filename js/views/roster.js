@@ -1,14 +1,15 @@
 import { CONFIG } from '../config.js';
-import { subscribeToUsers, subscribeToRoster, updateRosterEntry } from '../db.js';
+import { subscribeToUsers, subscribeToRoster, updateRosterEntry, getTickets } from '../db.js';
 import { showToast, rosterBadge } from '../ui.js';
 
-let allUsers = [];
+let allUsers   = [];
+let allTickets = [];
 let rosterData = {};
 let currentDate = todayISO();
 let weekDates = [];
 let unsubUsers, unsubRoster;
 let currentActor;
-const canEdit = true; // TL and Manager can both edit
+const canEdit = true;
 
 export function mountRosterView(actor, container, readOnly = false) {
   currentActor = actor;
@@ -21,7 +22,14 @@ export function mountRosterView(actor, container, readOnly = false) {
   unsubUsers = subscribeToUsers(users => {
     allUsers = users.filter(u => u.role === "Advisor" && u.active);
     renderRoster(readOnly);
+    renderAdvisorGrid();
   });
+
+  // Fetch tickets once for holding counts
+  getTickets().then(tickets => {
+    allTickets = tickets;
+    renderAdvisorGrid();
+  }).catch(() => {});
 
   subscribeWeek(readOnly);
 }
@@ -70,10 +78,17 @@ function buildShell(readOnly) {
         <div id="roster-table-container"></div>
       </div>
     </div>
-    <div class="card">
+    <div class="card" style="margin-bottom:16px">
       <div class="card-header"><h3>Legend</h3></div>
       <div class="card-body" style="display:flex;flex-wrap:wrap;gap:10px">
         ${CONFIG.ROSTER_CODES.map(c => `${rosterBadge(c)} <span style="font-size:12px">${CONFIG.ROSTER_LABELS[c]}</span>`).join("")}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>Advisor Overview</h3></div>
+      <div class="card-body">
+        <div class="advisor-grid" id="roster-advisor-grid"><p style="color:var(--text-muted);font-size:13px">Loading…</p></div>
       </div>
     </div>
   `;
@@ -196,6 +211,31 @@ function renderRoster(readOnly) {
       });
     });
   }
+}
+
+// ─── Advisor Overview Grid ────────────────────────────────────────────────────
+
+function renderAdvisorGrid() {
+  const grid = document.getElementById("roster-advisor-grid");
+  if (!grid || !allUsers.length) return;
+
+  grid.innerHTML = allUsers.map(a => {
+    const holding     = allTickets.filter(t => t.assignedTo === a.email && CONFIG.STATUSES.OPEN.includes(t.platformStatus)).length;
+    const presenceCls = a.currentStatus === "Logged In" ? "logged-in" : a.currentStatus === "On Break" ? "on-break" : "logged-out";
+    const statusIcon  = a.currentStatus === "Logged In" ? "🟢" : a.currentStatus === "On Break" ? "🟡" : "⚫";
+    return `
+      <div class="advisor-card">
+        <div class="advisor-card-name" style="display:flex;align-items:center;gap:6px">
+          <span class="presence-dot ${presenceCls}"></span>${a.name}
+        </div>
+        <div class="advisor-card-stats">
+          <div class="advisor-stat"><div class="as-val">${holding}</div><div class="as-label">Holding</div></div>
+          <div class="advisor-stat"><div class="as-val">${a.todayResolvedCount || 0}</div><div class="as-label">Resolved</div></div>
+          <div class="advisor-stat"><div class="as-val">${a.todayAssignedCount || 0}</div><div class="as-label">Assigned</div></div>
+          <div class="advisor-stat"><div class="as-val">${statusIcon}</div><div class="as-label">Status</div></div>
+        </div>
+      </div>`;
+  }).join("");
 }
 
 function getRosterCellStyle(code) {

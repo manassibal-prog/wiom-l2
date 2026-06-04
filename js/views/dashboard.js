@@ -26,7 +26,6 @@ export function mountDashboardView(actor, container) {
   unsubUsers = subscribeToUsers(users => {
     allUsers = users;
     renderStats();
-    renderAdvisorGrid();
   });
   startScheduler();
 }
@@ -44,7 +43,6 @@ async function fetchTickets(force = false) {
   if (!force && allTickets.length > 0) {
     renderStats();
     renderBreakdowns();
-    renderAdvisorGrid();
     renderPivotTables();
     if (info && lastRefreshed) {
       const t = lastRefreshed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
@@ -60,7 +58,6 @@ async function fetchTickets(force = false) {
     lastRefreshed = new Date();
     renderStats();
     renderBreakdowns();
-    renderAdvisorGrid();
     renderPivotTables();
     const t = lastRefreshed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
     if (info) info.textContent = `Last refreshed: ${t}`;
@@ -112,13 +109,6 @@ function buildShell() {
       <div class="card">
         <div class="card-header"><h3>Tickets by Complaint Type</h3></div>
         <div class="card-body" style="padding:0" id="dash-category-list"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header"><h3>Advisor Overview</h3></div>
-      <div class="card-body">
-        <div class="advisor-grid" id="dash-advisor-grid"></div>
       </div>
     </div>
 

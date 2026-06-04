@@ -130,7 +130,7 @@ function renderSidebar() {
     navItems = [
       { id: "dashboard", icon: "📊", label: "Dashboard" },
       { id: "tickets", icon: "📋", label: "All Tickets" },
-      { id: "roster", icon: "📅", label: "Roster" },
+      { id: "roster", icon: "📅", label: "Advisor Overview" },
       { id: "users", icon: "👥", label: "Users" },
       { id: "ingest-log", icon: "📥", label: "Ingestion Log" }
     ];
@@ -236,7 +236,7 @@ function navigateTo(viewId) {
       break;
 
     case "roster":
-      if (title) title.textContent = "Roster";
+      if (title) title.textContent = "Advisor Overview";
       mountRosterView(currentUser, content, role !== CONFIG.ROLES.TL && role !== CONFIG.ROLES.MANAGER && role !== CONFIG.ROLES.SR_MANAGER);
       break;
 
