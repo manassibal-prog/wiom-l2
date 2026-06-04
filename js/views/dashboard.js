@@ -2,8 +2,9 @@ import { CONFIG } from '../config.js';
 import { getTickets, subscribeToUsers } from '../db.js';
 import { statusBadge } from '../ui.js';
 
-let allTickets = [];
-let allUsers   = [];
+let allTickets     = [];
+let allUsers       = [];
+let currentCatFilter = ""; // "" = show L3 totals, else show L4 for this L3
 let unsubUsers;
 
 // ─── Scheduled Refresh ───────────────────────────────────────────────────────
@@ -20,8 +21,13 @@ let firedToday = { date: "", keys: new Set() };
 let lastRefreshed = null;
 
 export function mountDashboardView(actor, container) {
+  currentCatFilter = "";
   container.innerHTML = buildShell();
   document.getElementById("dash-refresh-btn")?.addEventListener("click", () => fetchTickets(true));
+  document.getElementById("dash-cat-filter")?.addEventListener("change", e => {
+    currentCatFilter = e.target.value;
+    renderBreakdowns();
+  });
   fetchTickets();
   unsubUsers = subscribeToUsers(users => {
     allUsers = users;
@@ -107,7 +113,12 @@ function buildShell() {
         <div class="card-body" style="padding:0" id="dash-status-list"></div>
       </div>
       <div class="card">
-        <div class="card-header"><h3>Tickets by Complaint Type</h3></div>
+        <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <h3 style="margin:0" id="dash-cat-title">Tickets by Complaint Type</h3>
+          <select class="filter-select" id="dash-cat-filter" style="font-size:12px;padding:3px 8px;min-width:160px">
+            <option value="">All Categories (L3)</option>
+          </select>
+        </div>
         <div class="card-body" style="padding:0" id="dash-category-list"></div>
       </div>
     </div>
@@ -158,18 +169,42 @@ function renderBreakdowns() {
       </div>`).join("");
   }
 
-  const catEl = document.getElementById("dash-category-list");
+  const catEl     = document.getElementById("dash-category-list");
+  const catFilter = document.getElementById("dash-cat-filter");
+  const catTitle  = document.getElementById("dash-cat-title");
+
   if (catEl) {
-    const counts = {};
-    allTickets.forEach(t => { const c = t.dispL3 || "Unknown"; counts[c] = (counts[c] || 0) + 1; });
-    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-    const total  = allTickets.length || 1;
-    catEl.innerHTML = sorted.map(([cat, count], i) => `
+    // Keep dropdown in sync with current data
+    if (catFilter) {
+      const l3s = [...new Set(allTickets.map(t => t.dispL3).filter(Boolean))].sort();
+      catFilter.innerHTML = `<option value="">All Categories (L3)</option>` +
+        l3s.map(l3 => `<option value="${l3}" ${currentCatFilter === l3 ? "selected" : ""}>${l3}</option>`).join("");
+    }
+
+    let rows, base;
+    if (currentCatFilter) {
+      // Drilldown: show L4 for selected L3
+      if (catTitle) catTitle.textContent = `${currentCatFilter} — Sub-types`;
+      const subset = allTickets.filter(t => t.dispL3 === currentCatFilter);
+      const counts = {};
+      subset.forEach(t => { const c = t.dispL4 || "—"; counts[c] = (counts[c] || 0) + 1; });
+      rows = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      base = subset.length || 1;
+    } else {
+      // Top level: show L3 totals
+      if (catTitle) catTitle.textContent = "Tickets by Complaint Type";
+      const counts = {};
+      allTickets.forEach(t => { const c = t.dispL3 || "Unknown"; counts[c] = (counts[c] || 0) + 1; });
+      rows = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      base = allTickets.length || 1;
+    }
+
+    catEl.innerHTML = rows.map(([label, count], i) => `
       <div style="display:flex;align-items:center;gap:10px;padding:9px 16px;${i % 2 === 0 ? "" : "background:var(--bg-elevated)"}">
-        <div style="flex:1;font-size:13px">${cat}</div>
+        <div style="flex:1;font-size:13px">${label}</div>
         <div style="font-weight:600;font-size:13px;min-width:32px;text-align:right">${count}</div>
         <div style="width:80px;height:6px;background:var(--border);border-radius:4px;overflow:hidden">
-          <div style="height:100%;width:${Math.round(count/total*100)}%;background:var(--accent);border-radius:4px"></div>
+          <div style="height:100%;width:${Math.round(count/base*100)}%;background:var(--accent);border-radius:4px"></div>
         </div>
       </div>`).join("");
   }
