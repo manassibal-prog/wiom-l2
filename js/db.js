@@ -47,23 +47,29 @@ export async function updateUserPresence(email, name, event) {
 
 // ─── Tickets ─────────────────────────────────────────────────────
 
+// Google Sheets returns ticketNo as a number; coerce to string so
+// data-id attribute comparisons (always strings) work correctly.
+function _fixTicketNos(tickets) {
+  return tickets.map(t => ({ ...t, ticketNo: String(t.ticketNo) }));
+}
+
 export async function getTickets() {
-  return api({ action: 'getTickets' });
+  return _fixTicketNos(await api({ action: 'getTickets' }));
 }
 
 export function subscribeToTickets(callback) {
-  api({ action: 'getTickets' }).then(callback).catch(console.error);
+  api({ action: 'getTickets' }).then(t => callback(_fixTicketNos(t))).catch(console.error);
   const iv = setInterval(
-    () => api({ action: 'getTickets' }).then(callback).catch(console.error),
+    () => api({ action: 'getTickets' }).then(t => callback(_fixTicketNos(t))).catch(console.error),
     60000
   );
   return () => clearInterval(iv);
 }
 
 export function subscribeToAdvisorTickets(email, callback) {
-  api({ action: 'getAdvisorTickets', email }).then(callback).catch(console.error);
+  api({ action: 'getAdvisorTickets', email }).then(t => callback(_fixTicketNos(t))).catch(console.error);
   const iv = setInterval(
-    () => api({ action: 'getAdvisorTickets', email }).then(callback).catch(console.error),
+    () => api({ action: 'getAdvisorTickets', email }).then(t => callback(_fixTicketNos(t))).catch(console.error),
     60000
   );
   return () => clearInterval(iv);
