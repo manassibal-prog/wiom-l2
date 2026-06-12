@@ -619,11 +619,12 @@ async function openAutoAssignModal() {
   } finally { hideLoading(); }
 
   const rosterEntries = roster?.advisors || {};
-  const allAvailable  = allUsers
+  // Sort by open-ticket holding count so round-robin starts from the least loaded
+  const allAvailable = allUsers
     .filter(u => u.role === "Advisor" && u.active && CONFIG.AVAILABLE_CODES.includes(rosterEntries[u.email]))
     .sort((a, b) => {
-      const ha = allTickets.filter(t => t.assignedTo === a.email).length;
-      const hb = allTickets.filter(t => t.assignedTo === b.email).length;
+      const ha = allTickets.filter(t => t.assignedTo === a.email && CONFIG.STATUSES.OPEN.includes(t.platformStatus)).length;
+      const hb = allTickets.filter(t => t.assignedTo === b.email && CONFIG.STATUSES.OPEN.includes(t.platformStatus)).length;
       return ha - hb;
     });
 
@@ -635,50 +636,57 @@ async function openAutoAssignModal() {
     return;
   }
 
-  const KRITI   = "kriti.tiwari@wiom.in";
-  const SHIVANI = "shivani.sharma@wiom.in";
-  const POONAM  = "poonam.singh@wiom.in";
-  const isAvail = email => allAvailable.some(a => a.email === email);
-  const getAdv  = email => allAvailable.find(a => a.email === email);
+  // Routing rules:
+  //   Internet Issues → only assign if agingHours >= 24
+  //   All other categories (Partner Misbehavior, Others, etc.) → assign immediately
+  //   All tickets → single pool of ALL available advisors, round-robin by lowest holding
+  const skippedInternet = unassigned.filter(t => t.dispL3 === "Internet Issues" && t.agingHours < 24);
+  const eligible        = unassigned.filter(t => t.dispL3 !== "Internet Issues" || t.agingHours >= 24);
 
-  const pmPool     = isAvail(KRITI) ? [getAdv(KRITI)].filter(Boolean) : allAvailable.filter(a => [SHIVANI, POONAM].includes(a.email));
-  const othersPool = isAvail(SHIVANI) ? [getAdv(SHIVANI)].filter(Boolean) : allAvailable.filter(a => [KRITI, POONAM].includes(a.email));
-  const specialtyEmails     = new Set([...pmPool, ...othersPool].map(a => a.email));
-  const regularPool         = allAvailable.filter(a => !specialtyEmails.has(a.email));
-  const effectiveRegularPool = regularPool.length ? regularPool : allAvailable;
+  if (!eligible.length) {
+    showModal("Auto-Assign",
+      `<p style="font-size:14px;margin-bottom:10px">No tickets eligible for assignment right now.</p>
+       ${skippedInternet.length ? `<p style="font-size:13px;color:var(--text-muted)">⏳ ${skippedInternet.length} Internet Issue ticket(s) are under 24h old — they will be assigned automatically once they age past 24h.</p>` : ""}`,
+      `<button class="btn btn-secondary" onclick="document.getElementById('modal-overlay').style.display='none'">OK</button>`
+    );
+    return;
+  }
 
-  const pmTickets      = unassigned.filter(t => t.dispL3 === "Partner Misbehavior");
-  const othersTickets  = unassigned.filter(t => t.dispL3 === "Others");
-  const regularTickets = unassigned.filter(t => t.dispL3 !== "Partner Misbehavior" && t.dispL3 !== "Others");
+  // Build assignments round-robin by lowest holding count
+  const holdingMap = {};
+  allAvailable.forEach(a => {
+    holdingMap[a.email] = allTickets.filter(t =>
+      t.assignedTo === a.email && CONFIG.STATUSES.OPEN.includes(t.platformStatus)
+    ).length;
+  });
 
+  const pool = [...allAvailable];
   const assignments = [];
-  const distribute  = (tickets, pool) => {
-    const eff = pool.length ? pool : allAvailable;
-    tickets.forEach((t, i) => { const adv = eff[i % eff.length]; assignments.push({ ticketNo: t.ticketNo, advisorEmail: adv.email, advisorName: adv.name }); });
-  };
-  distribute(pmTickets, pmPool);
-  distribute(othersTickets, othersPool);
-  distribute(regularTickets, effectiveRegularPool);
-
-  const poolLine = (tickets, pool, label) => {
-    if (!tickets.length) return "";
-    const eff = pool.length ? pool : allAvailable;
-    return `<div style="padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
-      <strong>${label}</strong> <span style="color:var(--text-muted)">(${tickets.length} tickets)</span>
-      → <span style="color:var(--accent)">${eff.map(a => a.name).join(", ")}</span></div>`;
-  };
+  eligible.forEach(t => {
+    pool.sort((a, b) => holdingMap[a.email] - holdingMap[b.email]);
+    const adv = pool[0];
+    assignments.push({ ticketNo: t.ticketNo, advisorEmail: adv.email, advisorName: adv.name });
+    holdingMap[adv.email]++;
+  });
 
   const body = `
-    <p style="font-size:14px;margin-bottom:12px"><strong>${unassigned.length}</strong> unassigned tickets will be assigned with specialty routing:</p>
+    <p style="font-size:14px;margin-bottom:12px">
+      <strong>${eligible.length}</strong> tickets will be distributed to all available advisors (round-robin by lowest holding):
+    </p>
+    ${skippedInternet.length ? `
+    <div style="font-size:12px;color:var(--text-muted);background:var(--bg-elevated);border-radius:6px;padding:8px 12px;margin-bottom:12px">
+      ⏳ ${skippedInternet.length} Internet Issue ticket(s) under 24h are skipped — auto-assigned at next ingestion run.
+    </div>` : ""}
     <div style="border:1px solid var(--border);border-radius:8px;padding:0 12px;margin-bottom:14px">
-      ${poolLine(pmTickets, pmPool, "Partner Misbehavior")}
-      ${poolLine(othersTickets, othersPool, "Others")}
-      ${poolLine(regularTickets, effectiveRegularPool, "All other tickets")}
+      <div style="padding:7px 0;font-size:13px">
+        <strong>All categories</strong> <span style="color:var(--text-muted)">(${eligible.length} tickets)</span>
+        → <span style="color:var(--accent)">${allAvailable.map(a => a.name).join(", ")}</span>
+      </div>
     </div>
     <div style="font-size:12px;color:var(--text-muted)">
       ${allAvailable.map(a => {
         const count = assignments.filter(x => x.advisorEmail === a.email).length;
-        const h     = allTickets.filter(t => t.assignedTo === a.email).length;
+        const h     = allTickets.filter(t => t.assignedTo === a.email && CONFIG.STATUSES.OPEN.includes(t.platformStatus)).length;
         return `<div style="padding:2px 0">${a.name}: +${count} new (${h} currently holding)</div>`;
       }).join("")}
     </div>`;
@@ -692,11 +700,12 @@ async function openAutoAssignModal() {
     const btn = document.getElementById("aa-confirm");
     btn.disabled = true; btn.textContent = "Assigning…";
     try {
-      showLoading(`Assigning ${unassigned.length} tickets…`);
+      showLoading(`Assigning ${eligible.length} tickets…`);
       await bulkAssignTickets(assignments, currentActor);
       hideLoading();
-      showToast(`${unassigned.length} tickets assigned`, "success");
+      showToast(`${eligible.length} tickets assigned`, "success");
       closeModal();
+      fetchTickets(true);
     } catch (e) {
       hideLoading();
       showToast("Error: " + e.message, "error");
