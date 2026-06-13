@@ -1,7 +1,7 @@
 import { CONFIG } from '../config.js';
 import {
   getTickets, subscribeToUsers,
-  assignTicket, bulkAssignTickets, getRoster, deassignTicket
+  assignTicket, bulkAssignTickets, getRoster, bulkDeassignTickets
 } from '../db.js';
 import {
   showToast, showLoading, hideLoading, showModal, closeModal,
@@ -186,6 +186,7 @@ function buildShell() {
       <div class="bulk-bar" id="bulk-bar">
         <span class="bulk-count" id="bulk-count">0 selected</span>
         <button class="btn btn-primary btn-sm" id="bulk-assign-btn">Assign Selected</button>
+        <button class="btn btn-danger btn-sm" id="bulk-deassign-btn">De-assign Selected</button>
         <button class="btn btn-secondary btn-sm" id="bulk-clear-btn">Clear Selection</button>
       </div>
       <div class="table-container" style="border-radius:0;border-left:none;border-right:none;border-bottom:none;box-shadow:none">
@@ -467,7 +468,6 @@ function renderTable() {
       <td class="td-actions">
         <button class="btn btn-xs btn-secondary view-btn" data-id="${t.ticketNo}">View</button>
         <button class="btn btn-xs btn-primary assign-btn" data-id="${t.ticketNo}">Assign</button>
-        ${t.assignedTo ? `<button class="btn btn-xs btn-danger deassign-btn" data-id="${t.ticketNo}" data-advisor="${t.assignedToName || ''}">De-assign</button>` : ''}
       </td>
     </tr>`;
   }).join("");
@@ -494,24 +494,6 @@ function renderTable() {
     btn.addEventListener("click", () => openAssignModal([btn.dataset.id]));
   });
 
-  tbody.querySelectorAll(".deassign-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const id     = btn.dataset.id;
-      const advisor = btn.dataset.advisor || "this advisor";
-      showConfirm(
-        `Remove <strong>${advisor}</strong> from ticket <strong>${id}</strong>? It will return to New/Unassigned.`,
-        async () => {
-          try {
-            await deassignTicket(id, currentActor);
-            showToast("Ticket de-assigned", "success");
-            fetchTickets(true);
-          } catch (e) {
-            showToast("Error: " + e.message, "error");
-          }
-        }
-      );
-    });
-  });
 
   renderPagination(pagBtns, currentPage, totalPages, p => { currentPage = p; renderTable(); });
 
@@ -539,10 +521,35 @@ function updateBulkBar() {
 
 function bindBulkBar() {
   setTimeout(() => {
-    const assignBtn = document.getElementById("bulk-assign-btn");
-    const clearBtn  = document.getElementById("bulk-clear-btn");
+    const assignBtn   = document.getElementById("bulk-assign-btn");
+    const deassignBtn = document.getElementById("bulk-deassign-btn");
+    const clearBtn    = document.getElementById("bulk-clear-btn");
+
     if (assignBtn) assignBtn.addEventListener("click", () => openAssignModal([...selectedTicketNos]));
-    if (clearBtn)  clearBtn.addEventListener("click",  () => { selectedTicketNos.clear(); updateBulkBar(); renderTable(); });
+
+    if (deassignBtn) deassignBtn.addEventListener("click", () => {
+      const ids = [...selectedTicketNos];
+      if (!ids.length) { showToast("No tickets selected", "warning"); return; }
+      showConfirm(
+        `De-assign <strong>${ids.length}</strong> ticket${ids.length > 1 ? "s" : ""}? They will return to New/Unassigned.`,
+        async () => {
+          try {
+            showLoading(`De-assigning ${ids.length} tickets…`);
+            await bulkDeassignTickets(ids, currentActor);
+            hideLoading();
+            showToast(`${ids.length} ticket${ids.length > 1 ? "s" : ""} de-assigned`, "success");
+            selectedTicketNos.clear();
+            updateBulkBar();
+            fetchTickets(true);
+          } catch (e) {
+            hideLoading();
+            showToast("Error: " + e.message, "error");
+          }
+        }
+      );
+    });
+
+    if (clearBtn) clearBtn.addEventListener("click", () => { selectedTicketNos.clear(); updateBulkBar(); renderTable(); });
   }, 100);
 }
 
