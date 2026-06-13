@@ -91,6 +91,10 @@ export async function updateTicketRemarks(ticketNo, remarks, actor) {
   return api({ action: 'updateTicketStatus', ticketNo, newRemarks: remarks, actorEmail: actor.email });
 }
 
+export async function deassignTicket(ticketNo, actor) {
+  return api({ action: 'deassignTicket', ticketNo, actorEmail: actor.email });
+}
+
 // ─── Audit log ───────────────────────────────────────────────────
 
 export async function getTicketAuditLog(ticketNo) {
