@@ -1,7 +1,7 @@
 import { CONFIG } from '../config.js';
 import {
   getTickets, subscribeToUsers,
-  assignTicket, bulkAssignTickets, getRoster
+  assignTicket, bulkAssignTickets, getRoster, deassignTicket
 } from '../db.js';
 import {
   showToast, showLoading, hideLoading, showModal, closeModal,
@@ -467,6 +467,7 @@ function renderTable() {
       <td class="td-actions">
         <button class="btn btn-xs btn-secondary view-btn" data-id="${t.ticketNo}">View</button>
         <button class="btn btn-xs btn-primary assign-btn" data-id="${t.ticketNo}">Assign</button>
+        ${t.assignedTo ? `<button class="btn btn-xs btn-danger deassign-btn" data-id="${t.ticketNo}" data-advisor="${t.assignedToName || ''}">De-assign</button>` : ''}
       </td>
     </tr>`;
   }).join("");
@@ -491,6 +492,25 @@ function renderTable() {
 
   tbody.querySelectorAll(".assign-btn").forEach(btn => {
     btn.addEventListener("click", () => openAssignModal([btn.dataset.id]));
+  });
+
+  tbody.querySelectorAll(".deassign-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id     = btn.dataset.id;
+      const advisor = btn.dataset.advisor || "this advisor";
+      showConfirm(
+        `Remove <strong>${advisor}</strong> from ticket <strong>${id}</strong>? It will return to New/Unassigned.`,
+        async () => {
+          try {
+            await deassignTicket(id, currentActor);
+            showToast("Ticket de-assigned", "success");
+            fetchTickets(true);
+          } catch (e) {
+            showToast("Error: " + e.message, "error");
+          }
+        }
+      );
+    });
   });
 
   renderPagination(pagBtns, currentPage, totalPages, p => { currentPage = p; renderTable(); });
@@ -652,7 +672,8 @@ async function openAutoAssignModal() {
     return;
   }
 
-  // Build assignments round-robin by lowest holding count
+  // Build assignments round-robin by lowest holding count (cap: 140 per advisor)
+  const CAP = 140;
   const holdingMap = {};
   allAvailable.forEach(a => {
     holdingMap[a.email] = allTickets.filter(t =>
@@ -662,12 +683,14 @@ async function openAutoAssignModal() {
 
   const pool = [...allAvailable];
   const assignments = [];
-  eligible.forEach(t => {
-    pool.sort((a, b) => holdingMap[a.email] - holdingMap[b.email]);
-    const adv = pool[0];
+  for (const t of eligible) {
+    const belowCap = pool.filter(a => holdingMap[a.email] < CAP);
+    if (!belowCap.length) break; // all advisors at cap — stop assigning
+    belowCap.sort((a, b) => holdingMap[a.email] - holdingMap[b.email]);
+    const adv = belowCap[0];
     assignments.push({ ticketNo: t.ticketNo, advisorEmail: adv.email, advisorName: adv.name });
     holdingMap[adv.email]++;
-  });
+  }
 
   const body = `
     <p style="font-size:14px;margin-bottom:12px">
