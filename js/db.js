@@ -95,6 +95,10 @@ export async function deassignTicket(ticketNo, actor) {
   return api({ action: 'deassignTicket', ticketNo, actorEmail: actor.email });
 }
 
+export async function bulkDeassignTickets(ticketNos, actor) {
+  return api({ action: 'bulkDeassignTickets', ticketNos, actorEmail: actor.email });
+}
+
 // ─── Audit log ───────────────────────────────────────────────────
 
 export async function getTicketAuditLog(ticketNo) {
