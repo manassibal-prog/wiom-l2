@@ -1,5 +1,5 @@
 import { CONFIG } from './config.js';
-import { getTicketAuditLog, updateTicketStatus, updateTicketRemarks } from './db.js';
+import { getTicketAuditLog, updateTicketStatus, addRemark } from './db.js';
 
 // ─── Toast ───────────────────────────────────────────────────────────────────
 
@@ -201,9 +201,12 @@ export function renderPagination(container, currentPage, totalPages, onPageChang
 
 // ─── Ticket Detail Modal ──────────────────────────────────────────────────────
 
+function _esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
 export async function showTicketDetail(ticket, actor, onUpdated) {
   const isAdvisor = actor.role === "Advisor";
   const canChangeStatus = !isAdvisor || ticket.assignedTo === actor.email;
+  const canAddRemark    = canChangeStatus;
   const availableStatuses = isAdvisor ? CONFIG.ALL_STATUSES.filter(s => s !== "New/Unassigned") : CONFIG.ALL_STATUSES;
 
   const body = `
@@ -232,10 +235,29 @@ export async function showTicketDetail(ticket, actor, onUpdated) {
           ${availableStatuses.map(s => `<option value="${s}" ${ticket.platformStatus === s ? "selected" : ""}>${s}</option>`).join("")}
         </select>
       </div>` : ""}
-    <div class="form-group">
-      <label>Remarks</label>
-      <textarea class="form-control" id="td-remarks" placeholder="Add remarks…" ${!canChangeStatus ? "readonly" : ""}>${ticket.advisorRemarks || ""}</textarea>
+
+    <div class="form-group" style="margin-bottom:6px">
+      <label style="font-size:13px;font-weight:600">Remarks History</label>
+      <div id="td-remark-history" style="
+        background:var(--bg-elevated);
+        border:1px solid var(--border);
+        border-radius:6px;
+        padding:10px 12px;
+        min-height:52px;
+        max-height:150px;
+        overflow-y:auto;
+        font-size:12px;
+        margin-top:6px;
+      "><span style="color:var(--text-muted);font-style:italic">Loading…</span></div>
     </div>
+
+    ${canAddRemark ? `
+    <div class="form-group">
+      <label style="font-size:13px;font-weight:600">Add Remark</label>
+      <textarea class="form-control" id="td-new-remark" rows="3" placeholder="Type remark here…" style="margin-top:6px;resize:vertical"></textarea>
+      <button class="btn btn-secondary btn-sm" id="td-add-remark-btn" style="margin-top:6px">Add Remark</button>
+    </div>` : ""}
+
     <hr class="divider">
     <div class="section-title" style="font-size:13px;margin-bottom:8px">Audit Trail</div>
     <ul class="audit-list" id="td-audit"><li style="color:var(--text-muted);font-size:12px">Loading…</li></ul>
@@ -248,8 +270,24 @@ export async function showTicketDetail(ticket, actor, onUpdated) {
 
   showModal(`Ticket ${ticket.ticketNo}`, body, footer, true);
 
-  // Load audit trail
+  // Load audit trail and remark history from the same fetch
   getTicketAuditLog(ticket.ticketNo).then(logs => {
+    // ── Remark history ──────────────────────────────────────────────
+    const histEl = document.getElementById("td-remark-history");
+    if (histEl) {
+      const remarkLogs = logs.filter(l => l.action === "REMARK_UPDATE");
+      if (!remarkLogs.length) {
+        histEl.innerHTML = `<span style="color:var(--text-muted);font-style:italic">No remarks yet.</span>`;
+      } else {
+        histEl.innerHTML = remarkLogs.map((l, i) => `
+          <div style="margin-bottom:${i < remarkLogs.length - 1 ? "8px" : "0"};padding-bottom:${i < remarkLogs.length - 1 ? "8px" : "0"};${i < remarkLogs.length - 1 ? "border-bottom:1px solid var(--border);" : ""}">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">${formatDate(l.timestamp)} — ${_esc(l.actorEmail)}</div>
+            <div style="color:var(--text-primary);white-space:pre-wrap">${_esc(l.newValue)}</div>
+          </div>`).join("");
+      }
+    }
+
+    // ── Audit trail ─────────────────────────────────────────────────
     const auditEl = document.getElementById("td-audit");
     if (!auditEl) return;
     if (!logs.length) { auditEl.innerHTML = `<li style="color:var(--text-muted);font-size:12px">No audit history.</li>`; return; }
@@ -257,21 +295,57 @@ export async function showTicketDetail(ticket, actor, onUpdated) {
       <li class="audit-item">
         <span class="audit-time">${formatDate(l.timestamp)}</span>
         <span class="audit-action">${l.action}</span>
-        <span style="color:var(--text-muted)">${l.actorEmail}</span>
-        ${l.oldValue ? `<span style="color:var(--text-muted);margin-left:4px">${l.oldValue} → ${l.newValue}</span>` : ""}
+        <span style="color:var(--text-muted)">${_esc(l.actorEmail)}</span>
+        ${l.action === "STATUS_CHANGE" ? `<span style="color:var(--text-muted);margin-left:4px">${_esc(l.oldValue)} → ${_esc(l.newValue)}</span>` : ""}
       </li>`).join("");
   });
 
+  // ── Add Remark button ────────────────────────────────────────────
+  if (canAddRemark) {
+    const addRemarkBtn = document.getElementById("td-add-remark-btn");
+    if (addRemarkBtn) {
+      addRemarkBtn.onclick = async () => {
+        const remarkEl = document.getElementById("td-new-remark");
+        const remark = remarkEl?.value?.trim();
+        if (!remark) { showToast("Please enter a remark", "warning"); return; }
+        try {
+          addRemarkBtn.disabled = true;
+          addRemarkBtn.textContent = "Adding…";
+          await addRemark(ticket.ticketNo, remark, actor);
+          // Optimistically prepend to history
+          const histEl = document.getElementById("td-remark-history");
+          if (histEl) {
+            const hasEmpty = histEl.querySelector("span");
+            const newEntry = `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">
+              <div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">${formatDate(new Date().toISOString())} — ${_esc(actor.email)}</div>
+              <div style="color:var(--text-primary);white-space:pre-wrap">${_esc(remark)}</div>
+            </div>`;
+            if (hasEmpty) histEl.innerHTML = newEntry;
+            else histEl.insertAdjacentHTML("afterbegin", newEntry);
+          }
+          remarkEl.value = "";
+          showToast("Remark added", "success");
+          if (onUpdated) onUpdated();
+        } catch (e) {
+          showToast("Error: " + e.message, "error");
+        } finally {
+          addRemarkBtn.disabled = false;
+          addRemarkBtn.textContent = "Add Remark";
+        }
+      };
+    }
+  }
+
+  // ── Save Changes (status only) ───────────────────────────────────
   if (canChangeStatus) {
     const saveBtn = document.getElementById("td-save");
     if (saveBtn) {
       saveBtn.onclick = async () => {
         const newStatus = document.getElementById("td-status")?.value;
-        const newRemarks = document.getElementById("td-remarks")?.value || "";
         try {
           saveBtn.disabled = true;
           saveBtn.textContent = "Saving…";
-          await updateTicketStatus(ticket.ticketNo, newStatus, newRemarks, actor);
+          await updateTicketStatus(ticket.ticketNo, newStatus, undefined, actor);
           showToast("Ticket updated", "success");
           closeModal();
           if (onUpdated) onUpdated();
