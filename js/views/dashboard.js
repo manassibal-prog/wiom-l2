@@ -1,10 +1,11 @@
 import { CONFIG } from '../config.js';
-import { getTickets, subscribeToUsers } from '../db.js';
-import { statusBadge } from '../ui.js';
+import { getTickets, subscribeToUsers, getAdvisorActivity } from '../db.js';
+import { statusBadge, showToast } from '../ui.js';
 
-let allTickets     = [];
-let allUsers       = [];
-let currentCatFilter = ""; // "" = show L3 totals, else show L4 for this L3
+let allTickets       = [];
+let allUsers         = [];
+let currentCatFilter = "";
+let advisorActivity  = {};
 let unsubUsers;
 
 // ─── Scheduled Refresh ───────────────────────────────────────────────────────
@@ -22,6 +23,7 @@ let lastRefreshed = null;
 
 export function mountDashboardView(actor, container) {
   currentCatFilter = "";
+  advisorActivity  = {};
   container.innerHTML = buildShell();
   document.getElementById("dash-refresh-btn")?.addEventListener("click", () => fetchTickets(true));
   document.getElementById("dash-cat-filter")?.addEventListener("change", e => {
@@ -32,8 +34,10 @@ export function mountDashboardView(actor, container) {
   unsubUsers = subscribeToUsers(users => {
     allUsers = users;
     renderStats();
+    renderPerformanceTable();
   });
   startScheduler();
+  initPerformanceSection();
 }
 
 export function unmountDashboardView() {
@@ -65,6 +69,7 @@ async function fetchTickets(force = false) {
     renderStats();
     renderBreakdowns();
     renderPivotTables();
+    renderPerformanceTable();
     const t = lastRefreshed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
     if (info) info.textContent = `Last refreshed: ${t}`;
   } catch (e) {
@@ -124,6 +129,24 @@ function buildShell() {
     </div>
 
     <div id="dash-pivots"></div>
+
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <h3 style="margin:0">Advisor Performance</h3>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <input type="date" id="perf-date" class="filter-input" style="padding:4px 8px;font-size:12px;width:auto">
+          <span style="font-size:12px;color:var(--text-muted)">up to</span>
+          <input type="time" id="perf-time" class="filter-input" style="padding:4px 8px;font-size:12px;width:auto">
+          <button class="btn btn-primary btn-sm" id="perf-apply">Apply</button>
+          <span id="perf-status" style="font-size:11px;color:var(--text-muted)"></span>
+        </div>
+      </div>
+      <div id="dash-perf-table" style="overflow-x:auto">
+        <div style="padding:20px;color:var(--text-muted);font-size:13px;text-align:center">
+          Select a date and click Apply to load advisor activity.
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -281,6 +304,141 @@ function renderPivotTables() {
     buildPivotHTML("Sub-type × Aging", withL4, t => t.dispL4) +
     buildPivotHTML("Advisor × Aging",  withAdvisor, t => t.assignedToName) +
     buildPivotHTML("Platform Status × Aging", allTickets, t => t.platformStatus);
+}
+
+// ─── Advisor Performance ──────────────────────────────────────────────────────
+
+function initPerformanceSection() {
+  // Default: today in IST, up to current time
+  const nowIST   = new Date(Date.now() + 5.5 * 3600000);
+  const todayIST = nowIST.toISOString().slice(0, 10);
+  const timeIST  = nowIST.toISOString().slice(11, 16);
+  const dateEl = document.getElementById("perf-date");
+  const timeEl = document.getElementById("perf-time");
+  if (dateEl) dateEl.value = todayIST;
+  if (timeEl) timeEl.value = timeIST;
+
+  document.getElementById("perf-apply")?.addEventListener("click", fetchAdvisorActivity);
+}
+
+async function fetchAdvisorActivity() {
+  const date   = document.getElementById("perf-date")?.value;
+  const toTime = document.getElementById("perf-time")?.value;
+  const status = document.getElementById("perf-status");
+  const btn    = document.getElementById("perf-apply");
+  if (!date) { showToast("Select a date first", "warning"); return; }
+  if (btn)    { btn.disabled = true; btn.textContent = "Loading…"; }
+  if (status) status.textContent = "";
+  try {
+    advisorActivity = await getAdvisorActivity(date, toTime);
+    renderPerformanceTable();
+    if (status) {
+      const label = toTime ? `${date} up to ${toTime}` : date;
+      status.textContent = `Showing: ${label}`;
+    }
+  } catch (e) {
+    showToast("Error loading activity: " + e.message, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Apply"; }
+  }
+}
+
+function renderPerformanceTable() {
+  const el = document.getElementById("dash-perf-table");
+  if (!el) return;
+
+  const advisors = allUsers.filter(u => u.role === "Advisor" && u.active);
+  if (!advisors.length) {
+    el.innerHTML = `<div style="padding:20px;color:var(--text-muted);font-size:13px;text-align:center">No advisor data yet.</div>`;
+    return;
+  }
+
+  const RESOLVED = new Set([
+    "Resolved - Refund Initiated","Resolved by PFT","Resolved - DNP 3",
+    "Already completed","Already Resolved","Send to WIOM"
+  ]);
+
+  // Status → pill colour
+  function pillStyle(st) {
+    if (RESOLVED.has(st))          return "background:rgba(34,197,94,.12);color:#22c55e";
+    if (st.startsWith("DNP"))      return "background:rgba(239,68,68,.12);color:#ef4444";
+    if (st.startsWith("Follow"))   return "background:rgba(79,142,247,.12);color:#4f8ef7";
+    if (st === "Pending")          return "background:rgba(245,158,11,.12);color:#f59e0b";
+    return "background:rgba(100,116,139,.12);color:#94a3b8";
+  }
+
+  const rows = advisors.map(a => {
+    const act      = advisorActivity[a.email] || { actions: 0, statusChanges: 0, remarks: 0, resolved: 0, statusMix: {} };
+    const holding  = allTickets.filter(t => t.assignedTo === a.email && CONFIG.STATUSES.OPEN.includes(t.platformStatus)).length;
+    const critical = allTickets.filter(t => t.assignedTo === a.email && (t.agingBucket === "72-120 hrs" || t.agingBucket === ">120 hrs")).length;
+    const topSt    = Object.entries(act.statusMix).sort((x, y) => y[1] - x[1]).slice(0, 3);
+    return { a, act, holding, critical, topSt };
+  }).sort((x, y) => y.act.actions - x.act.actions);
+
+  const hasActivity = Object.keys(advisorActivity).length > 0;
+
+  el.innerHTML = `
+    <table class="data-table" style="width:100%;min-width:700px">
+      <thead>
+        <tr>
+          <th>Advisor</th>
+          <th>Status</th>
+          <th style="text-align:center">Holding</th>
+          ${hasActivity ? `
+          <th style="text-align:center">Actions ↓</th>
+          <th style="text-align:center" title="Status changes">S/C</th>
+          <th style="text-align:center" title="Remarks added">Remarks</th>
+          <th style="text-align:center">Resolved</th>
+          <th>Status Mix</th>` : ""}
+          <th style="text-align:center">Critical &gt;72h</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(({ a, act, holding, critical, topSt }) => {
+          const dot   = a.currentStatus === "Logged In" ? "#22c55e" : a.currentStatus === "On Break" ? "#f59e0b" : "#475569";
+          const stTxt = a.currentStatus || "Logged Out";
+
+          const critCell = critical > 0
+            ? `<span style="background:rgba(239,68,68,.15);color:#ef4444;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${critical}</span>`
+            : `<span style="color:var(--text-muted)">—</span>`;
+
+          const pills = topSt.map(([st, cnt]) =>
+            `<span style="${pillStyle(st)};padding:2px 6px;border-radius:4px;font-size:10px;font-weight:500;white-space:nowrap">${cnt} ${st.length > 18 ? st.slice(0,18)+"…" : st}</span>`
+          ).join(" ");
+
+          return `<tr>
+            <td>
+              <div style="font-weight:600;font-size:13px">${a.name}</div>
+              <div style="font-size:10px;color:var(--text-muted)">${a.email}</div>
+            </td>
+            <td>
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="width:8px;height:8px;border-radius:50%;background:${dot};flex-shrink:0;display:inline-block"></span>
+                <span style="font-size:12px;color:${dot}">${stTxt}</span>
+              </div>
+            </td>
+            <td style="text-align:center;font-size:14px;font-weight:600">${holding}</td>
+            ${hasActivity ? `
+            <td style="text-align:center;font-size:14px;font-weight:600;color:var(--accent)">${act.actions || "—"}</td>
+            <td style="text-align:center;font-size:13px;color:var(--text-muted)">${act.statusChanges || "—"}</td>
+            <td style="text-align:center;font-size:13px;color:var(--text-muted)">${act.remarks || "—"}</td>
+            <td style="text-align:center">
+              ${act.resolved > 0
+                ? `<span style="background:rgba(34,197,94,.12);color:#22c55e;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600">${act.resolved}</span>`
+                : `<span style="color:var(--text-muted)">0</span>`}
+            </td>
+            <td style="max-width:220px">
+              <div style="display:flex;gap:4px;flex-wrap:wrap">${pills || '<span style="color:var(--text-muted);font-size:11px">—</span>'}</div>
+            </td>` : ""}
+            <td style="text-align:center">${critCell}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    ${hasActivity ? `<div style="padding:8px 14px;font-size:11px;color:var(--text-muted);border-top:1px solid var(--border)">
+      Actions = status changes + remarks written by advisor during the selected period. Sorted by most active.
+    </div>` : ""}
+  `;
 }
 
 // ─── Advisor Grid ─────────────────────────────────────────────────────────────
