@@ -42,6 +42,7 @@ const REFRESH_TIMES = [
   { hh: 10, mm: 30 }, { hh: 12, mm: 30 }, { hh: 14, mm: 30 }, { hh: 16, mm: 30 }, { hh: 18, mm: 30 }
 ];
 let schedulerInterval = null;
+let pollingInterval   = null;
 let firedToday = { date: "", keys: new Set() };
 let lastRefreshed = null;
 
@@ -64,11 +65,14 @@ export function mountTLDashboard(actor, container) {
     populateAdvisorFilter();
   });
   startScheduler();
+  // Poll every 2 minutes so the table stays current without a hard refresh
+  pollingInterval = setInterval(() => fetchTickets(true), 120000);
 }
 
 export function unmountTLDashboard() {
   if (unsubUsers) unsubUsers();
   stopScheduler();
+  if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
   if (_docChangeHandler) { document.removeEventListener("change", _docChangeHandler); _docChangeHandler = null; }
   if (_docClickHandler)  { document.removeEventListener("click",  _docClickHandler);  _docClickHandler  = null; }
 }
@@ -624,6 +628,7 @@ function openAssignModal(ticketNos) {
         showToast("Ticket assigned", "success");
       }
       closeModal();
+      fetchTickets(true);
     } catch (e) {
       showToast("Error: " + e.message, "error");
       const btn = document.getElementById("assign-confirm");
