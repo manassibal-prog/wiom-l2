@@ -370,7 +370,7 @@ function renderPerformanceTable() {
   const rows = advisors.map(a => {
     const act      = advisorActivity[a.email] || { actions: 0, statusChanges: 0, remarks: 0, resolved: 0, statusMix: {} };
     const holding  = allTickets.filter(t => t.assignedTo === a.email && CONFIG.STATUSES.OPEN.includes(t.platformStatus)).length;
-    const critical = allTickets.filter(t => t.assignedTo === a.email && (t.agingBucket === "72-120 hrs" || t.agingBucket === ">120 hrs")).length;
+    const critical = allTickets.filter(t => t.assignedTo === a.email && CONFIG.STATUSES.OPEN.includes(t.platformStatus) && (t.agingBucket === "72-120 hrs" || t.agingBucket === ">120 hrs")).length;
     const topSt    = Object.entries(act.statusMix).sort((x, y) => y[1] - x[1]).slice(0, 3);
     return { a, act, holding, critical, topSt };
   }).sort((x, y) => y.act.actions - x.act.actions);
