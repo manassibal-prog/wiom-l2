@@ -27,6 +27,7 @@ let currentFilters = {
 // Stored handlers for cleanup on unmount
 let _docChangeHandler = null;
 let _docClickHandler  = null;
+let pollingInterval   = null;
 
 const MS_LABELS = {
   partners: "All Partners",
@@ -64,11 +65,14 @@ export function mountTLDashboard(actor, container) {
     populateAdvisorFilter();
   });
   startScheduler();
+  // Poll every 2 minutes so the table stays current without a hard refresh
+  pollingInterval = setInterval(() => { if (selectedTicketNos.size === 0) fetchTickets(true); }, 120000);
 }
 
 export function unmountTLDashboard() {
   if (unsubUsers) unsubUsers();
   stopScheduler();
+  if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
   if (_docChangeHandler) { document.removeEventListener("change", _docChangeHandler); _docChangeHandler = null; }
   if (_docClickHandler)  { document.removeEventListener("click",  _docClickHandler);  _docClickHandler  = null; }
 }
