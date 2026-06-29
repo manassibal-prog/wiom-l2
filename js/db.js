@@ -87,10 +87,6 @@ export async function updateTicketStatus(ticketNo, newStatus, newRemarks, actor)
   return api({ action: 'updateTicketStatus', ticketNo, newStatus, newRemarks, actorEmail: actor.email });
 }
 
-export async function updateTicketRemarks(ticketNo, remarks, actor) {
-  return api({ action: 'updateTicketStatus', ticketNo, newRemarks: remarks, actorEmail: actor.email });
-}
-
 export async function getAdvisorActivity(date, toTime) {
   return api({ action: 'getAdvisorActivity', date, toTime });
 }

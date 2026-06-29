@@ -441,30 +441,3 @@ function renderPerformanceTable() {
   `;
 }
 
-// ─── Advisor Grid ─────────────────────────────────────────────────────────────
-
-function renderAdvisorGrid() {
-  const advisors = allUsers.filter(u => u.role === "Advisor" && u.active);
-  const grid = document.getElementById("dash-advisor-grid");
-  if (!grid || !advisors.length) return;
-
-  grid.innerHTML = advisors.map(a => {
-    const holding    = allTickets.filter(t => t.assignedTo === a.email && CONFIG.STATUSES.OPEN.includes(t.platformStatus)).length;
-    const presenceCls = a.currentStatus === "Logged In" ? "logged-in" : a.currentStatus === "On Break" ? "on-break" : "logged-out";
-    return `
-      <div class="advisor-card">
-        <div class="advisor-card-name" style="display:flex;align-items:center;gap:6px">
-          <span class="presence-dot ${presenceCls}"></span>${a.name}
-        </div>
-        <div class="advisor-card-stats">
-          <div class="advisor-stat"><div class="as-val">${holding}</div><div class="as-label">Holding</div></div>
-          <div class="advisor-stat"><div class="as-val">${a.todayResolvedCount || 0}</div><div class="as-label">Resolved</div></div>
-          <div class="advisor-stat"><div class="as-val">${a.todayAssignedCount || 0}</div><div class="as-label">Assigned</div></div>
-          <div class="advisor-stat">
-            <div class="as-val">${a.currentStatus === "Logged In" ? "🟢" : a.currentStatus === "On Break" ? "🟡" : "⚫"}</div>
-            <div class="as-label">Status</div>
-          </div>
-        </div>
-      </div>`;
-  }).join("");
-}
