@@ -15,6 +15,10 @@ let currentActor = null;
 let userDoc      = null;
 let activeViewType = null; // "dashboard" | "tickets"
 
+// ─── Sort state ───────────────────────────────────────────────────────────────
+let sortCol = "agingHours";
+let sortAsc = false;
+
 // ─── Filter state ─────────────────────────────────────────────────────────────
 let currentFilters = {
   search: "", partners: [], statuses: [], l3s: [], l4s: [], agings: [], reopenOnly: false
@@ -197,6 +201,8 @@ export function mountAdvisorView(actor, container) {
   currentActor = actor;
   activeViewType = "tickets";
   currentFilters = { search: "", partners: [], statuses: [], l3s: [], l4s: [], agings: [], reopenOnly: false };
+  sortCol = "agingHours";
+  sortAsc = false;
   currentPage = 1;
   _ensureSubscription(actor);
   container.innerHTML = _buildTicketsShell();
@@ -274,12 +280,12 @@ function _buildTicketsShell() {
               <th>Phone</th>
               <th>Complaint Type</th>
               <th>Partner</th>
-              <th>Aging</th>
+              <th class="sortable" data-col="agingHours">Aging ↕</th>
               <th>Kapture Status</th>
               <th>Platform Status</th>
               <th>Created</th>
               <th>Assigned On</th>
-              <th>Last Updated</th>
+              <th class="sortable" data-col="lastStatusChangeAt">Last Updated ↕</th>
               <th>Reopen</th>
               <th>Remarks</th>
               <th>Actions</th>
@@ -367,6 +373,14 @@ function bindFilterEvents() {
 
   document.getElementById("adv-fl-clear")?.addEventListener("click", clearFilters);
 
+  document.querySelectorAll(".data-table th.sortable").forEach(th => {
+    th.addEventListener("click", () => {
+      const col = th.dataset.col;
+      if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = false; }
+      applyAndRender();
+    });
+  });
+
   // Document-level change handler for checkboxes (cannot be blocked by stopPropagation)
   _docChangeHandler = e => {
     if (!e.target.classList.contains("ms-cb")) return;
@@ -438,7 +452,10 @@ function applyAndRender() {
   currentFilters.l4s      = getMultiSelectValues("l4s");
   currentFilters.agings   = getMultiSelectValues("agings");
   filtered = filterTickets(allTickets, currentFilters);
-  filtered.sort((a, b) => (b.agingHours || 0) - (a.agingHours || 0));
+  filtered.sort((a, b) => {
+    const va = a[sortCol] ?? 0, vb = b[sortCol] ?? 0;
+    return sortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+  });
   currentPage = 1;
   renderTable();
 }

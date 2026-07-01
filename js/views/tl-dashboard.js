@@ -208,7 +208,7 @@ function buildShell() {
               <th>Assigned To</th>
               <th>Created</th>
               <th>Assigned On</th>
-              <th>Last Updated</th>
+              <th class="sortable" data-col="lastStatusChangeAt">Last Updated ↕</th>
               <th>Reopen</th>
               <th>Actions</th>
             </tr>
