@@ -203,7 +203,6 @@ function buildShell() {
               <th>Phone</th>
               <th>Complaint Type</th>
               <th>Partner</th>
-              <th>Queue</th>
               <th class="sortable" data-col="agingHours">Aging ↕</th>
               <th>Platform Status</th>
               <th>Assigned To</th>
@@ -448,7 +447,7 @@ function renderTable() {
     : "No tickets";
 
   if (!page.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="15">No tickets match the current filters.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="14">No tickets match the current filters.</td></tr>`;
     if (pagBtns) pagBtns.innerHTML = "";
     return;
   }
@@ -463,7 +462,6 @@ function renderTable() {
       <td class="td-phone">${t.phone || "—"}</td>
       <td class="td-wrap" title="${[t.dispL3, t.dispL4].filter(Boolean).join(" > ")}">${t.dispL3 || "—"}${t.dispL4 ? ` <span style="color:var(--text-muted)">›</span> ${t.dispL4}` : ""}</td>
       <td class="td-wrap" title="${t.mappedPartner || ""}">${t.mappedPartner || "—"}</td>
-      <td>${t.currentQueue || "—"}</td>
       <td>${agingBadge(t.agingBucket, t.agingHours)}</td>
       <td>${statusBadge(t.platformStatus)}</td>
       <td class="td-wrap">${t.assignedToName || '<span class="text-muted">Unassigned</span>'}</td>
