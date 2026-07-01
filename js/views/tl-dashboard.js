@@ -209,6 +209,7 @@ function buildShell() {
               <th>Assigned To</th>
               <th>Created</th>
               <th>Assigned On</th>
+              <th>Last Updated</th>
               <th>Reopen</th>
               <th>Actions</th>
             </tr>
@@ -468,6 +469,7 @@ function renderTable() {
       <td class="td-wrap">${t.assignedToName || '<span class="text-muted">Unassigned</span>'}</td>
       <td style="font-size:11px;color:var(--text-muted)">${formatDateShort(t.firstSeenDate)}</td>
       <td style="font-size:11px;color:var(--text-muted)">${t.assignedDate ? formatDate(t.assignedDate) : "—"}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${t.lastStatusChangeAt ? formatDateShort(t.lastStatusChangeAt) : "—"}</td>
       <td>${t.reopenTag ? '<span class="badge badge-escalated">⚠ Reopen</span>' : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td class="td-actions">
         <button class="btn btn-xs btn-secondary view-btn" data-id="${t.ticketNo}">View</button>
