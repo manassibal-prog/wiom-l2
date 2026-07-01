@@ -225,6 +225,8 @@ export async function showTicketDetail(ticket, actor, onUpdated) {
       <div class="ticket-field"><div class="tf-label">Assigned To</div><div class="tf-value">${ticket.assignedToName || "Unassigned"}</div></div>
       <div class="ticket-field"><div class="tf-label">First Seen</div><div class="tf-value">${formatDate(ticket.firstSeenDate)}</div></div>
       <div class="ticket-field"><div class="tf-label">Last Ingested</div><div class="tf-value">${formatDate(ticket.lastIngestedDate)}</div></div>
+      <div class="ticket-field"><div class="tf-label">Last Updated</div><div class="tf-value">${ticket.lastStatusChangeAt ? formatDate(ticket.lastStatusChangeAt) : "—"}</div></div>
+      <div class="ticket-field"><div class="tf-label">Partner Follow-up</div><div class="tf-value">${_esc(ticket.partnerFollowUpStatus) || "—"}</div></div>
       ${ticket.reopenTag ? '<div class="ticket-field" style="grid-column:1/-1"><div class="tf-value"><span class="badge badge-escalated">⚠ Reopen</span></div></div>' : ""}
     </div>
     <hr class="divider">
@@ -233,6 +235,14 @@ export async function showTicketDetail(ticket, actor, onUpdated) {
         <label>Platform Status</label>
         <select class="form-control" id="td-status">
           ${availableStatuses.map(s => `<option value="${s}" ${ticket.platformStatus === s ? "selected" : ""}>${s}</option>`).join("")}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Partner follow-up status</label>
+        <select class="form-control" id="td-partner-status">
+          <option value="">— select —</option>
+          ${["DNP 1","DNP 2","DNP 3","Connected and shared the issue","Issue not solved/delay"]
+            .map(v => `<option value="${v}" ${ticket.partnerFollowUpStatus === v ? "selected" : ""}>${v}</option>`).join("")}
         </select>
       </div>` : ""}
 
@@ -342,10 +352,11 @@ export async function showTicketDetail(ticket, actor, onUpdated) {
     if (saveBtn) {
       saveBtn.onclick = async () => {
         const newStatus = document.getElementById("td-status")?.value;
+        const partnerFollowUpStatus = document.getElementById("td-partner-status")?.value;
         try {
           saveBtn.disabled = true;
           saveBtn.textContent = "Saving…";
-          await updateTicketStatus(ticket.ticketNo, newStatus, undefined, actor);
+          await updateTicketStatus(ticket.ticketNo, newStatus, undefined, actor, partnerFollowUpStatus);
           showToast("Ticket updated", "success");
           closeModal();
           if (onUpdated) onUpdated();

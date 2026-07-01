@@ -83,8 +83,8 @@ export async function bulkAssignTickets(assignments, actor) {
   return api({ action: 'bulkAssignTickets', assignments, actorEmail: actor.email });
 }
 
-export async function updateTicketStatus(ticketNo, newStatus, newRemarks, actor) {
-  return api({ action: 'updateTicketStatus', ticketNo, newStatus, newRemarks, actorEmail: actor.email });
+export async function updateTicketStatus(ticketNo, newStatus, newRemarks, actor, partnerFollowUpStatus) {
+  return api({ action: 'updateTicketStatus', ticketNo, newStatus, newRemarks, partnerFollowUpStatus, actorEmail: actor.email });
 }
 
 export async function getAdvisorActivity(date, toTime) {

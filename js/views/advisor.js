@@ -279,6 +279,7 @@ function _buildTicketsShell() {
               <th>Platform Status</th>
               <th>Created</th>
               <th>Assigned On</th>
+              <th>Last Updated</th>
               <th>Reopen</th>
               <th>Remarks</th>
               <th>Actions</th>
@@ -460,7 +461,7 @@ function renderTable() {
     : "No tickets";
 
   if (!page.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="13">No tickets found.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="14">No tickets found.</td></tr>`;
     if (pagBtns) pagBtns.innerHTML = "";
     return;
   }
@@ -477,6 +478,7 @@ function renderTable() {
       <td>${statusBadge(t.platformStatus)}</td>
       <td style="font-size:11px;color:var(--text-muted)">${formatDateShort(t.firstSeenDate)}</td>
       <td style="font-size:11px;color:var(--text-muted)">${t.assignedDate ? formatDate(t.assignedDate) : "—"}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${t.lastStatusChangeAt ? formatDateShort(t.lastStatusChangeAt) : "—"}</td>
       <td>${t.reopenTag ? '<span class="badge badge-escalated">⚠ Reopen</span>' : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td class="td-wrap" style="font-size:12px" title="${t.advisorRemarks || ""}">${t.advisorRemarks || '<span class="text-muted">—</span>'}</td>
       <td class="td-actions">

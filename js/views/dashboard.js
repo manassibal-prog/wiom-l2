@@ -4,8 +4,11 @@ import { statusBadge, showToast } from '../ui.js';
 
 let allTickets       = [];
 let allUsers         = [];
-let currentCatFilter = "";
-let advisorActivity  = {};
+let currentCatFilter  = "";
+let advisorActivity   = {};
+let pivotL3Filter     = "";
+let pivotL4Filter     = "";
+let pivotStatusFilter = "";
 let unsubUsers;
 
 // ─── Scheduled Refresh ───────────────────────────────────────────────────────
@@ -22,8 +25,11 @@ let firedToday = { date: "", keys: new Set() };
 let lastRefreshed = null;
 
 export function mountDashboardView(actor, container) {
-  currentCatFilter = "";
-  advisorActivity  = {};
+  currentCatFilter  = "";
+  advisorActivity   = {};
+  pivotL3Filter     = "";
+  pivotL4Filter     = "";
+  pivotStatusFilter = "";
   container.innerHTML = buildShell();
   document.getElementById("dash-refresh-btn")?.addEventListener("click", () => fetchTickets(true));
   document.getElementById("dash-cat-filter")?.addEventListener("change", e => {
@@ -297,13 +303,125 @@ function renderPivotTables() {
   const el = document.getElementById("dash-pivots");
   if (!el || !allTickets.length) return;
 
-  const withL4      = allTickets.filter(t => t.dispL4);
-  const withAdvisor = allTickets.filter(t => t.assignedToName);
+  const withL4 = allTickets.filter(t => t.dispL4);
+
+  const uniqueL3 = [...new Set(allTickets.map(t => t.dispL3).filter(Boolean))].sort();
+  const uniqueStatuses = [...new Set(allTickets.map(t => t.platformStatus).filter(Boolean))].sort();
 
   el.innerHTML =
     buildPivotHTML("Sub-type × Aging", withL4, t => t.dispL4) +
-    buildPivotHTML("Advisor × Aging",  withAdvisor, t => t.assignedToName) +
+    `<div class="card" style="margin-bottom:16px">
+      <div class="card-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <h3 style="margin:0;flex:0 0 auto">Advisor × Aging</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-left:auto">
+          <select class="form-control" id="pivot-l3" style="width:auto;min-width:150px;font-size:12px;padding:4px 8px">
+            <option value="">All complaint types</option>
+            ${uniqueL3.map(v => `<option value="${v}" ${pivotL3Filter === v ? "selected" : ""}>${v}</option>`).join("")}
+          </select>
+          <select class="form-control" id="pivot-l4" style="width:auto;min-width:150px;font-size:12px;padding:4px 8px">
+            <option value="">All sub-types</option>
+          </select>
+          <select class="form-control" id="pivot-status" style="width:auto;min-width:150px;font-size:12px;padding:4px 8px">
+            <option value="">All statuses</option>
+            ${uniqueStatuses.map(v => `<option value="${v}" ${pivotStatusFilter === v ? "selected" : ""}>${v}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <div id="advisor-aging-body"></div>
+    </div>` +
     buildPivotHTML("Platform Status × Aging", allTickets, t => t.platformStatus);
+
+  _updatePivotL4Options();
+  _renderAdvisorAgingTable();
+
+  document.getElementById("pivot-l3")?.addEventListener("change", e => {
+    pivotL3Filter = e.target.value;
+    pivotL4Filter = "";
+    _updatePivotL4Options();
+    _renderAdvisorAgingTable();
+  });
+  document.getElementById("pivot-l4")?.addEventListener("change", e => {
+    pivotL4Filter = e.target.value;
+    _renderAdvisorAgingTable();
+  });
+  document.getElementById("pivot-status")?.addEventListener("change", e => {
+    pivotStatusFilter = e.target.value;
+    _renderAdvisorAgingTable();
+  });
+}
+
+function _updatePivotL4Options() {
+  const l4El = document.getElementById("pivot-l4");
+  if (!l4El) return;
+  const relevantL4 = [...new Set(
+    allTickets
+      .filter(t => (!pivotL3Filter || t.dispL3 === pivotL3Filter) && t.dispL4)
+      .map(t => t.dispL4)
+  )].sort();
+  l4El.innerHTML = `<option value="">All sub-types</option>` +
+    relevantL4.map(v => `<option value="${v}" ${pivotL4Filter === v ? "selected" : ""}>${v}</option>`).join("");
+}
+
+function _renderAdvisorAgingTable() {
+  const el = document.getElementById("advisor-aging-body");
+  if (!el) return;
+  let tickets = allTickets.filter(t => t.assignedToName);
+  if (pivotL3Filter)     tickets = tickets.filter(t => t.dispL3 === pivotL3Filter);
+  if (pivotL4Filter)     tickets = tickets.filter(t => t.dispL4 === pivotL4Filter);
+  if (pivotStatusFilter) tickets = tickets.filter(t => t.platformStatus === pivotStatusFilter);
+
+  if (!tickets.length) {
+    el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px">No tickets match the selected filters.</div>`;
+    return;
+  }
+
+  const BUCKETS = CONFIG.AGING_BUCKETS;
+  const pivot = {}, bucketTotals = {};
+  tickets.forEach(t => {
+    const rowVal = t.assignedToName || "—";
+    const bucket = t.agingBucket || "—";
+    if (!pivot[rowVal]) pivot[rowVal] = {};
+    pivot[rowVal][bucket] = (pivot[rowVal][bucket] || 0) + 1;
+    bucketTotals[bucket] = (bucketTotals[bucket] || 0) + 1;
+  });
+
+  const activeBuckets = BUCKETS.filter(b => bucketTotals[b] > 0);
+  const rows = Object.entries(pivot).sort((a, b) => {
+    const ta = Object.values(a[1]).reduce((s, v) => s + v, 0);
+    const tb = Object.values(b[1]).reduce((s, v) => s + v, 0);
+    return tb - ta;
+  });
+
+  const rowsHTML = rows.map(([rowVal, buckets]) => {
+    const rowTotal = Object.values(buckets).reduce((s, v) => s + v, 0);
+    return `<tr>
+      <td style="font-size:12px;white-space:nowrap">${rowVal}</td>
+      ${activeBuckets.map(b => `<td style="text-align:center;font-size:12px">${buckets[b] || ""}</td>`).join("")}
+      <td style="text-align:center;font-size:12px;font-weight:600">${rowTotal}</td>
+    </tr>`;
+  }).join("");
+
+  const footHTML = `
+    <tr style="font-weight:700;border-top:2px solid var(--border);background:var(--bg-elevated)">
+      <td style="font-size:12px">Grand Total</td>
+      ${activeBuckets.map(b => `<td style="text-align:center;font-size:12px">${bucketTotals[b] || ""}</td>`).join("")}
+      <td style="text-align:center;font-size:12px">${tickets.length}</td>
+    </tr>`;
+
+  el.innerHTML = `
+    <div style="overflow-x:auto">
+      <table class="data-table" style="width:100%;font-size:12px">
+        <thead>
+          <tr>
+            <th style="text-align:left;min-width:200px"> </th>
+            ${activeBuckets.map(b => `<th style="text-align:center;white-space:nowrap">${b}</th>`).join("")}
+            <th style="text-align:center;white-space:nowrap">Grand Total</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHTML}</tbody>
+        <tfoot>${footHTML}</tfoot>
+      </table>
+    </div>`;
 }
 
 // ─── Advisor Performance ──────────────────────────────────────────────────────
