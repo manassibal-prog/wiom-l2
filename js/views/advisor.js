@@ -287,7 +287,6 @@ function _buildTicketsShell() {
               <th>Assigned On</th>
               <th class="sortable" data-col="lastStatusChangeAt">Last Updated ↕</th>
               <th>Reopen</th>
-              <th>Remarks</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -478,7 +477,7 @@ function renderTable() {
     : "No tickets";
 
   if (!page.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="14">No tickets found.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="13">No tickets found.</td></tr>`;
     if (pagBtns) pagBtns.innerHTML = "";
     return;
   }
@@ -497,7 +496,6 @@ function renderTable() {
       <td style="font-size:11px;color:var(--text-muted)">${t.assignedDate ? formatDate(t.assignedDate) : "—"}</td>
       <td style="font-size:11px;color:var(--text-muted)">${t.lastStatusChangeAt ? formatDateShort(t.lastStatusChangeAt) : "—"}</td>
       <td>${t.reopenTag ? '<span class="badge badge-escalated">⚠ Reopen</span>' : '<span style="color:var(--text-muted)">—</span>'}</td>
-      <td class="td-wrap" style="font-size:12px" title="${t.advisorRemarks || ""}">${t.advisorRemarks || '<span class="text-muted">—</span>'}</td>
       <td class="td-actions">
         <button class="btn btn-xs btn-primary view-btn" data-id="${t.ticketNo}">Update</button>
       </td>
