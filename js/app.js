@@ -52,6 +52,7 @@ function bootApp() {
   initTheme();
   renderSidebar();
   renderThemeToggle();
+  renderSidebarToggle();
 
   // Initialize advisor sidebar attendance (async fire-and-forget)
   if (currentUser.role === CONFIG.ROLES.ADVISOR) {
@@ -74,6 +75,24 @@ function bootApp() {
 function initTheme() {
   const saved = localStorage.getItem("wiom-theme") || "dark";
   document.documentElement.setAttribute("data-theme", saved);
+}
+
+function renderSidebarToggle() {
+  const topbar = document.getElementById("topbar");
+  if (!topbar) return;
+  const btn = document.createElement("button");
+  btn.id = "sidebar-toggle-btn";
+  btn.className = "sidebar-toggle-btn";
+  btn.title = "Toggle sidebar";
+  btn.innerHTML = "&#9776;";
+  const collapsed = localStorage.getItem("wiom-sidebar") === "collapsed";
+  if (collapsed) document.getElementById("app-shell")?.classList.add("sidebar-collapsed");
+  btn.addEventListener("click", () => {
+    const shell = document.getElementById("app-shell");
+    const isNowCollapsed = shell?.classList.toggle("sidebar-collapsed");
+    localStorage.setItem("wiom-sidebar", isNowCollapsed ? "collapsed" : "open");
+  });
+  topbar.insertBefore(btn, topbar.firstChild);
 }
 
 function renderThemeToggle() {
