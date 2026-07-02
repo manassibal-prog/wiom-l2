@@ -157,17 +157,6 @@ function buildShell() {
   ).join("");
 
   return `
-    <style>
-      .ms-wrap{position:relative;display:inline-block}
-      .ms-btn{cursor:pointer;text-align:left;white-space:nowrap;display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:110px}
-      .ms-drop{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;min-width:220px;max-width:320px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.45);overflow:hidden}
-      .ms-drop.open{display:block}
-      .ms-top{display:flex;gap:6px;padding:7px 10px;border-bottom:1px solid var(--border)}
-      .ms-opts{max-height:230px;overflow-y:auto;padding:4px 0}
-      .ms-opt-label{display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:12px;white-space:nowrap}
-      .ms-opt-label:hover{background:rgba(255,255,255,.06)}
-      .ms-opt-label input[type=checkbox]{flex-shrink:0;accent-color:var(--accent,#4f8ef7)}
-    </style>
     <div class="card mb-5">
       <div class="filter-bar" id="tl-filter-bar">
         <input class="filter-input" id="fl-search" type="text" placeholder="Search ticket #, customer, phone…">
