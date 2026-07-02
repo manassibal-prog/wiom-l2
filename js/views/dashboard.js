@@ -6,9 +6,10 @@ let allTickets       = [];
 let allUsers         = [];
 let currentCatFilter  = "";
 let advisorActivity   = {};
-let pivotL3Filter     = "";
-let pivotL4Filter     = "";
-let pivotStatusFilter = "";
+let pivotL3Filters     = [];
+let pivotL4Filters     = [];
+let pivotStatusFilters = [];
+let _pvDocClickHandler = null;
 let unsubUsers;
 
 // ─── Scheduled Refresh ───────────────────────────────────────────────────────
@@ -25,11 +26,12 @@ let firedToday = { date: "", keys: new Set() };
 let lastRefreshed = null;
 
 export function mountDashboardView(actor, container) {
-  currentCatFilter  = "";
-  advisorActivity   = {};
-  pivotL3Filter     = "";
-  pivotL4Filter     = "";
-  pivotStatusFilter = "";
+  currentCatFilter   = "";
+  advisorActivity    = {};
+  pivotL3Filters     = [];
+  pivotL4Filters     = [];
+  pivotStatusFilters = [];
+  if (_pvDocClickHandler) { document.removeEventListener("click", _pvDocClickHandler); _pvDocClickHandler = null; }
   container.innerHTML = buildShell();
   document.getElementById("dash-refresh-btn")?.addEventListener("click", () => fetchTickets(true));
   document.getElementById("dash-cat-filter")?.addEventListener("change", e => {
@@ -299,14 +301,110 @@ function buildPivotHTML(title, tickets, rowFn) {
     </div>`;
 }
 
+// ─── Pivot multi-select helpers ───────────────────────────────────────────────
+
+const _PV_LABELS = { l3: "Complaint type", l4: "Sub-type", status: "Platform status" };
+
+function _pvBuildMS(group, optionsHTML = "") {
+  const label = _PV_LABELS[group];
+  return `
+    <div style="position:relative;display:inline-block">
+      <button type="button" class="filter-select ms-btn" id="pv-ms-btn-${group}" style="min-width:150px;font-size:12px">
+        ${label}<span style="opacity:.5;margin-left:5px;font-size:10px">▾</span>
+      </button>
+      <div class="ms-drop" id="pv-ms-drop-${group}">
+        <div class="ms-top">
+          <button type="button" class="btn btn-xs btn-secondary pv-ms-all" data-pvgroup="${group}">All</button>
+          <button type="button" class="btn btn-xs btn-secondary pv-ms-clear" data-pvgroup="${group}">Clear</button>
+        </div>
+        <div class="ms-opts" id="pv-ms-opts-${group}">${optionsHTML}</div>
+      </div>
+    </div>`;
+}
+
+function _pvGetValues(group) {
+  return [...document.querySelectorAll(`#pv-ms-opts-${group} .pv-ms-cb:checked`)].map(el => el.value);
+}
+
+function _pvSetLabel(group) {
+  const btn = document.getElementById(`pv-ms-btn-${group}`);
+  if (!btn) return;
+  const vals = _pvGetValues(group);
+  const text = vals.length === 0 ? _PV_LABELS[group] : vals.length === 1 ? vals[0] : `${vals.length} selected`;
+  btn.innerHTML = text + `<span style="opacity:.5;margin-left:5px;font-size:10px">▾</span>`;
+}
+
+function _pvUpdateL4Options() {
+  const optsEl = document.getElementById("pv-ms-opts-l4");
+  if (!optsEl) return;
+  const relevantL4 = [...new Set(
+    allTickets
+      .filter(t => (!pivotL3Filters.length || pivotL3Filters.includes(t.dispL3)) && t.dispL4)
+      .map(t => t.dispL4)
+  )].sort();
+  optsEl.innerHTML = relevantL4.map(v =>
+    `<label class="ms-opt-label"><input type="checkbox" class="pv-ms-cb" data-group="l4" value="${v}" ${pivotL4Filters.includes(v) ? "checked" : ""}><span>${v}</span></label>`
+  ).join("");
+  _pvSetLabel("l4");
+}
+
+function _pvBindEvents() {
+  if (_pvDocClickHandler) document.removeEventListener("click", _pvDocClickHandler);
+  _pvDocClickHandler = () => ["l3","l4","status"].forEach(g => document.getElementById(`pv-ms-drop-${g}`)?.classList.remove("open"));
+  document.addEventListener("click", _pvDocClickHandler);
+
+  ["l3","l4","status"].forEach(group => {
+    document.getElementById(`pv-ms-btn-${group}`)?.addEventListener("click", e => {
+      e.stopPropagation();
+      const drop = document.getElementById(`pv-ms-drop-${group}`);
+      const wasOpen = drop?.classList.contains("open");
+      ["l3","l4","status"].forEach(g => document.getElementById(`pv-ms-drop-${g}`)?.classList.remove("open"));
+      if (!wasOpen) drop?.classList.add("open");
+    });
+    document.getElementById(`pv-ms-drop-${group}`)?.addEventListener("click", e => e.stopPropagation());
+  });
+
+  const card = document.getElementById("advisor-aging-body")?.closest(".card");
+  if (!card) return;
+
+  card.addEventListener("change", e => {
+    if (!e.target.classList.contains("pv-ms-cb")) return;
+    const group = e.target.dataset.group;
+    _pvSetLabel(group);
+    if (group === "l3") { pivotL3Filters = _pvGetValues("l3"); pivotL4Filters = []; _pvUpdateL4Options(); }
+    else if (group === "l4") { pivotL4Filters = _pvGetValues("l4"); }
+    else { pivotStatusFilters = _pvGetValues("status"); }
+    _renderAdvisorAgingTable();
+  });
+
+  card.addEventListener("click", e => {
+    const allBtn   = e.target.closest(".pv-ms-all");
+    const clearBtn = e.target.closest(".pv-ms-clear");
+    if (!allBtn && !clearBtn) return;
+    const group = (allBtn || clearBtn).dataset.pvgroup;
+    document.querySelectorAll(`#pv-ms-opts-${group} .pv-ms-cb`).forEach(cb => { cb.checked = !!allBtn; });
+    _pvSetLabel(group);
+    if (group === "l3") { pivotL3Filters = _pvGetValues("l3"); pivotL4Filters = []; _pvUpdateL4Options(); }
+    else if (group === "l4") { pivotL4Filters = _pvGetValues("l4"); }
+    else { pivotStatusFilters = _pvGetValues("status"); }
+    _renderAdvisorAgingTable();
+  });
+}
+
 function renderPivotTables() {
   const el = document.getElementById("dash-pivots");
   if (!el || !allTickets.length) return;
 
-  const withL4 = allTickets.filter(t => t.dispL4);
-
-  const uniqueL3 = [...new Set(allTickets.map(t => t.dispL3).filter(Boolean))].sort();
+  const withL4         = allTickets.filter(t => t.dispL4);
+  const uniqueL3       = [...new Set(allTickets.map(t => t.dispL3).filter(Boolean))].sort();
   const uniqueStatuses = [...new Set(allTickets.map(t => t.platformStatus).filter(Boolean))].sort();
+
+  const l3Opts = uniqueL3.map(v =>
+    `<label class="ms-opt-label"><input type="checkbox" class="pv-ms-cb" data-group="l3" value="${v}" ${pivotL3Filters.includes(v) ? "checked" : ""}><span>${v}</span></label>`
+  ).join("");
+  const statusOpts = uniqueStatuses.map(v =>
+    `<label class="ms-opt-label"><input type="checkbox" class="pv-ms-cb" data-group="status" value="${v}" ${pivotStatusFilters.includes(v) ? "checked" : ""}><span>${v}</span></label>`
+  ).join("");
 
   el.innerHTML =
     buildPivotHTML("Sub-type × Aging", withL4, t => t.dispL4) +
@@ -314,61 +412,27 @@ function renderPivotTables() {
       <div class="card-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <h3 style="margin:0;flex:0 0 auto">Advisor × Aging</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-left:auto">
-          <select class="form-control" id="pivot-l3" style="width:auto;min-width:150px;font-size:12px;padding:4px 8px">
-            <option value="">All complaint types</option>
-            ${uniqueL3.map(v => `<option value="${v}" ${pivotL3Filter === v ? "selected" : ""}>${v}</option>`).join("")}
-          </select>
-          <select class="form-control" id="pivot-l4" style="width:auto;min-width:150px;font-size:12px;padding:4px 8px">
-            <option value="">All sub-types</option>
-          </select>
-          <select class="form-control" id="pivot-status" style="width:auto;min-width:150px;font-size:12px;padding:4px 8px">
-            <option value="">All statuses</option>
-            ${uniqueStatuses.map(v => `<option value="${v}" ${pivotStatusFilter === v ? "selected" : ""}>${v}</option>`).join("")}
-          </select>
+          ${_pvBuildMS("l3", l3Opts)}
+          ${_pvBuildMS("l4")}
+          ${_pvBuildMS("status", statusOpts)}
         </div>
       </div>
       <div id="advisor-aging-body"></div>
     </div>` +
     buildPivotHTML("Platform Status × Aging", allTickets, t => t.platformStatus);
 
-  _updatePivotL4Options();
+  _pvUpdateL4Options();
   _renderAdvisorAgingTable();
-
-  document.getElementById("pivot-l3")?.addEventListener("change", e => {
-    pivotL3Filter = e.target.value;
-    pivotL4Filter = "";
-    _updatePivotL4Options();
-    _renderAdvisorAgingTable();
-  });
-  document.getElementById("pivot-l4")?.addEventListener("change", e => {
-    pivotL4Filter = e.target.value;
-    _renderAdvisorAgingTable();
-  });
-  document.getElementById("pivot-status")?.addEventListener("change", e => {
-    pivotStatusFilter = e.target.value;
-    _renderAdvisorAgingTable();
-  });
-}
-
-function _updatePivotL4Options() {
-  const l4El = document.getElementById("pivot-l4");
-  if (!l4El) return;
-  const relevantL4 = [...new Set(
-    allTickets
-      .filter(t => (!pivotL3Filter || t.dispL3 === pivotL3Filter) && t.dispL4)
-      .map(t => t.dispL4)
-  )].sort();
-  l4El.innerHTML = `<option value="">All sub-types</option>` +
-    relevantL4.map(v => `<option value="${v}" ${pivotL4Filter === v ? "selected" : ""}>${v}</option>`).join("");
+  _pvBindEvents();
 }
 
 function _renderAdvisorAgingTable() {
   const el = document.getElementById("advisor-aging-body");
   if (!el) return;
   let tickets = allTickets.filter(t => t.assignedToName);
-  if (pivotL3Filter)     tickets = tickets.filter(t => t.dispL3 === pivotL3Filter);
-  if (pivotL4Filter)     tickets = tickets.filter(t => t.dispL4 === pivotL4Filter);
-  if (pivotStatusFilter) tickets = tickets.filter(t => t.platformStatus === pivotStatusFilter);
+  if (pivotL3Filters.length)     tickets = tickets.filter(t => pivotL3Filters.includes(t.dispL3));
+  if (pivotL4Filters.length)     tickets = tickets.filter(t => pivotL4Filters.includes(t.dispL4));
+  if (pivotStatusFilters.length) tickets = tickets.filter(t => pivotStatusFilters.includes(t.platformStatus));
 
   if (!tickets.length) {
     el.innerHTML = `<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px">No tickets match the selected filters.</div>`;
