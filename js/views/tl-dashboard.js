@@ -65,8 +65,8 @@ export function mountTLDashboard(actor, container) {
     populateAdvisorFilter();
   });
   startScheduler();
-  // Poll every 2 minutes so the table stays current without a hard refresh
-  pollingInterval = setInterval(() => { if (selectedTicketNos.size === 0) fetchTickets(true); }, 120000);
+  // Poll every 5 minutes so the table stays current without a hard refresh
+  pollingInterval = setInterval(() => { if (selectedTicketNos.size === 0) fetchTickets(true); }, 300000);
 }
 
 export function unmountTLDashboard() {

@@ -9,24 +9,46 @@ export const auth = getAuth(app);
 // ─── API helper ───────────────────────────────────────────────────
 // Uses text/plain body to avoid CORS preflight with Apps Script
 
+// Read-only actions: deduplicate concurrent identical calls so they share one network request.
+// This prevents Apps Script concurrent-execution limits from being hit when multiple
+// subscriptions poll simultaneously (e.g. subscribeToUsers from app.js + tl-dashboard).
+const _READ_ACTIONS = new Set([
+  'getUser','getUsers','getTickets','getAdvisorTickets',
+  'getAuditLog','getAdvisorActivity','getIngestionLogs','getRoster'
+]);
+const _inflight = {};
+
 async function api(data) {
+  const isRead = _READ_ACTIONS.has(data.action);
+  const dedupeKey = isRead ? JSON.stringify(data) : null;
+  if (dedupeKey && _inflight[dedupeKey]) return _inflight[dedupeKey];
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
   // Key included in both URL param and body so it survives any POST→GET redirect
   const url  = CONFIG.SHEET_API_URL + '?key=' + encodeURIComponent(CONFIG.API_KEY);
   const body = JSON.stringify({ key: CONFIG.API_KEY, ...data });
-  try {
-    const res  = await fetch(url, { method: 'POST', body, signal: controller.signal });
-    if (!res.ok) throw new Error('API request failed (' + res.status + ')');
-    const json = await res.json();
-    if (json && json.error) throw new Error(json.error);
-    return json;
-  } catch (e) {
-    if (e.name === 'AbortError') throw new Error('Server not responding (timeout). Please retry.');
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
+
+  const promise = fetch(url, { method: 'POST', body, signal: controller.signal })
+    .then(res => {
+      if (!res.ok) throw new Error('API request failed (' + res.status + ')');
+      return res.json();
+    })
+    .then(json => {
+      if (json && json.error) throw new Error(json.error);
+      return json;
+    })
+    .catch(e => {
+      if (e.name === 'AbortError') throw new Error('Server not responding (timeout). Please retry.');
+      throw e;
+    })
+    .finally(() => {
+      clearTimeout(timer);
+      if (dedupeKey) delete _inflight[dedupeKey];
+    });
+
+  if (dedupeKey) _inflight[dedupeKey] = promise;
+  return promise;
 }
 
 // ─── Users ───────────────────────────────────────────────────────
@@ -47,7 +69,7 @@ export function subscribeToUsers(callback) {
   api({ action: 'getUsers' }).then(callback).catch(console.error);
   const iv = setInterval(
     () => api({ action: 'getUsers' }).then(callback).catch(console.error),
-    120000 // refresh user list every 2 minutes
+    300000 // refresh user list every 5 minutes
   );
   return () => clearInterval(iv);
 }
@@ -72,7 +94,7 @@ export function subscribeToTickets(callback) {
   api({ action: 'getTickets' }).then(t => callback(_fixTicketNos(t))).catch(console.error);
   const iv = setInterval(
     () => api({ action: 'getTickets' }).then(t => callback(_fixTicketNos(t))).catch(console.error),
-    60000
+    300000 // refresh every 5 minutes
   );
   return () => clearInterval(iv);
 }
@@ -81,7 +103,7 @@ export function subscribeToAdvisorTickets(email, callback) {
   api({ action: 'getAdvisorTickets', email }).then(t => callback(_fixTicketNos(t))).catch(console.error);
   const iv = setInterval(
     () => api({ action: 'getAdvisorTickets', email }).then(t => callback(_fixTicketNos(t))).catch(console.error),
-    60000
+    300000 // refresh every 5 minutes
   );
   return () => clearInterval(iv);
 }
