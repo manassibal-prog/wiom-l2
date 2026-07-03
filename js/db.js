@@ -30,8 +30,13 @@ async function api(data) {
   const controller  = new AbortController();
   const timeoutMs   = isRead ? _READ_TIMEOUT_MS : _WRITE_TIMEOUT_MS;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  // Key included in both URL param and body so it survives any POST→GET redirect
-  const url  = CONFIG.SHEET_API_URL + '?key=' + encodeURIComponent(CONFIG.API_KEY);
+  // All primitive params go in the URL so they survive a POST→GET redirect
+  // (Google Apps Script occasionally redirects POST requests, dropping the body)
+  const urlParams = new URLSearchParams({ key: CONFIG.API_KEY });
+  Object.entries(data).forEach(([k, v]) => {
+    if (v !== null && v !== undefined && typeof v !== 'object') urlParams.set(k, String(v));
+  });
+  const url  = CONFIG.SHEET_API_URL + '?' + urlParams.toString();
   const body = JSON.stringify({ key: CONFIG.API_KEY, ...data });
 
   const promise = fetch(url, { method: 'POST', body, signal: controller.signal })
