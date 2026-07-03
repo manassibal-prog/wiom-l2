@@ -308,6 +308,11 @@ export async function showTicketDetail(ticket, actor, onUpdated) {
         <span style="color:var(--text-muted)">${_esc(l.actorEmail)}</span>
         ${l.action === "STATUS_CHANGE" ? `<span style="color:var(--text-muted);margin-left:4px">${_esc(l.oldValue)} → ${_esc(l.newValue)}</span>` : ""}
       </li>`).join("");
+  }).catch(err => {
+    const histEl = document.getElementById("td-remark-history");
+    if (histEl) histEl.innerHTML = `<span style="color:var(--text-muted);font-style:italic">Could not load remarks: ${_esc(err.message)}</span>`;
+    const auditEl = document.getElementById("td-audit");
+    if (auditEl) auditEl.innerHTML = `<li style="color:var(--text-muted);font-size:12px">Could not load audit trail: ${_esc(err.message)}</li>`;
   });
 
   // ── Add Remark button ────────────────────────────────────────────

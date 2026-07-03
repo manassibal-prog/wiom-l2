@@ -10,12 +10,21 @@ export const auth = getAuth(app);
 // Uses text/plain body to avoid CORS preflight with Apps Script
 
 async function api(data) {
-  const body = JSON.stringify({ key: CONFIG.API_KEY, ...data });
-  const res  = await fetch(CONFIG.SHEET_API_URL, { method: 'POST', body });
-  if (!res.ok) throw new Error('API request failed (' + res.status + ')');
-  const json = await res.json();
-  if (json && json.error) throw new Error(json.error);
-  return json;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const body = JSON.stringify({ key: CONFIG.API_KEY, ...data });
+    const res  = await fetch(CONFIG.SHEET_API_URL, { method: 'POST', body, signal: controller.signal });
+    if (!res.ok) throw new Error('API request failed (' + res.status + ')');
+    const json = await res.json();
+    if (json && json.error) throw new Error(json.error);
+    return json;
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Server not responding (timeout). Please retry.');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ─── Users ───────────────────────────────────────────────────────
