@@ -16,6 +16,10 @@ const _READ_ACTIONS = new Set([
   'getUser','getUsers','getTickets','getAdvisorTickets',
   'getAuditLog','getAdvisorActivity','getIngestionLogs','getRoster'
 ]);
+// Write operations need more time — under concurrent load the lock can queue for ~20 s
+// before the actual write runs, so 30 s cuts them off too early.
+const _WRITE_TIMEOUT_MS = 60000;
+const _READ_TIMEOUT_MS  = 30000;
 const _inflight = {};
 
 async function api(data) {
@@ -23,8 +27,9 @@ async function api(data) {
   const dedupeKey = isRead ? JSON.stringify(data) : null;
   if (dedupeKey && _inflight[dedupeKey]) return _inflight[dedupeKey];
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30000);
+  const controller  = new AbortController();
+  const timeoutMs   = isRead ? _READ_TIMEOUT_MS : _WRITE_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   // Key included in both URL param and body so it survives any POST→GET redirect
   const url  = CONFIG.SHEET_API_URL + '?key=' + encodeURIComponent(CONFIG.API_KEY);
   const body = JSON.stringify({ key: CONFIG.API_KEY, ...data });
@@ -39,7 +44,7 @@ async function api(data) {
       return json;
     })
     .catch(e => {
-      if (e.name === 'AbortError') throw new Error('Server not responding (timeout). Please retry.');
+      if (e.name === 'AbortError') throw new Error('Server busy — please wait a moment and try again.');
       throw e;
     })
     .finally(() => {
