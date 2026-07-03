@@ -210,6 +210,10 @@ function navigateTo(viewId) {
     if (activeView === "my-dashboard") { /* dashboard has no cleanup needed */ }
     if (activeView === "tickets-mgr") unmountManagerDashboard();
     if (activeView === "roster" || activeView === "roster-ro") unmountRosterView();
+    if (activeView === "users") {
+      const c = document.getElementById("main-content");
+      if (c && c._unmount) { c._unmount(); delete c._unmount; }
+    }
   }
 
   activeView = viewId;
