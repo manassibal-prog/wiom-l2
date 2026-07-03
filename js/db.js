@@ -30,16 +30,18 @@ async function api(data) {
   const controller  = new AbortController();
   const timeoutMs   = isRead ? _READ_TIMEOUT_MS : _WRITE_TIMEOUT_MS;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  // All primitive params go in the URL so they survive a POST→GET redirect
-  // (Google Apps Script occasionally redirects POST requests, dropping the body)
+  // Use GET so params survive any Apps Script CORS redirect.
+  // POST→GET redirects drop the body (HTTP spec); GET redirects keep the URL.
+  // Complex objects (arrays) are JSON-encoded as a single URL param.
   const urlParams = new URLSearchParams({ key: CONFIG.API_KEY });
   Object.entries(data).forEach(([k, v]) => {
-    if (v !== null && v !== undefined && typeof v !== 'object') urlParams.set(k, String(v));
+    if (v !== null && v !== undefined) {
+      urlParams.set(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
+    }
   });
-  const url  = CONFIG.SHEET_API_URL + '?' + urlParams.toString();
-  const body = JSON.stringify({ key: CONFIG.API_KEY, ...data });
+  const url = CONFIG.SHEET_API_URL + '?' + urlParams.toString();
 
-  const promise = fetch(url, { method: 'POST', body, signal: controller.signal })
+  const promise = fetch(url, { method: 'GET', signal: controller.signal, cache: 'no-store' })
     .then(res => {
       if (!res.ok) throw new Error('API request failed (' + res.status + ')');
       return res.json();
