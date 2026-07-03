@@ -12,9 +12,11 @@ export const auth = getAuth(app);
 async function api(data) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
+  // Key included in both URL param and body so it survives any POST→GET redirect
+  const url  = CONFIG.SHEET_API_URL + '?key=' + encodeURIComponent(CONFIG.API_KEY);
+  const body = JSON.stringify({ key: CONFIG.API_KEY, ...data });
   try {
-    const body = JSON.stringify({ key: CONFIG.API_KEY, ...data });
-    const res  = await fetch(CONFIG.SHEET_API_URL, { method: 'POST', body, signal: controller.signal });
+    const res  = await fetch(url, { method: 'POST', body, signal: controller.signal });
     if (!res.ok) throw new Error('API request failed (' + res.status + ')');
     const json = await res.json();
     if (json && json.error) throw new Error(json.error);
